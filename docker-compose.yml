@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  kurento-media-server:
+    image: kurento/kurento-media-server:latest
+    container_name: kurento-media-server
+    restart: always
+    ports:
+      - "8888:8888" # KMS 기본 포트
+      - "5000-5050:5000-5050/udp" # WebRTC 및 RTP 포트
+    environment:
+      - KMS_MIN_PORT=5000
+      - KMS_MAX_PORT=5050
+    networks:
+      - kurento-network
+
+networks:
+  kurento-network:
+    driver: bridge

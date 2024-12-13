@@ -1,4 +1,4 @@
-package com.example.webrtcrefactor.page;
+package com.example.webrtcrefactor.webrtc;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;

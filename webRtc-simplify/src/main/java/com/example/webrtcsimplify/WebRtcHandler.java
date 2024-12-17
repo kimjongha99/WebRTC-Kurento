@@ -22,7 +22,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebRtcHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(WebRtcHandler.class);
     private static final Gson gson = new GsonBuilder().create();
-
     private final ConcurrentHashMap<String, UserSession> users = new ConcurrentHashMap<>();
 
     @Autowired
@@ -69,7 +68,6 @@ public class WebRtcHandler extends TextWebSocketHandler {
             response.add("candidate", JsonUtils.toJsonObject(event.getCandidate()));
             sendMessage(session, response.toString());
         });
-
         // SDP 처리
         String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
         String sdpAnswer = webRtcEp.processOffer(sdpOffer);
@@ -101,7 +99,7 @@ public class WebRtcHandler extends TextWebSocketHandler {
         }
     }
 
-    private void sendMessage(WebSocketSession session, String message) {
+    private synchronized void sendMessage(WebSocketSession session, String message) {
         try {
             session.sendMessage(new TextMessage(message));
         } catch (IOException e) {

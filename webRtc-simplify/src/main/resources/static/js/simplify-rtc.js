@@ -84,7 +84,7 @@ function stop() {
 }
 
 function send(message) {
+    console.log('Sending id : => ', message.id);
     const jsonMessage = JSON.stringify(message);
-    console.log('Sending:', jsonMessage);
     ws.send(jsonMessage);
 }

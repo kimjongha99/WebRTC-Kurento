@@ -431,7 +431,7 @@ public class HelloWorldHandler extends TextWebSocketHandler {
 
 
         // ---- Endpoint configuration
-// SDP 처리 및 엔드포인트 시작
+        // SDP 처리 및 엔드포인트 시작
         String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
         initWebRtcEndpoint(session, webRtcEp, sdpOffer);
         startWebRtcEndpoint(webRtcEp);

@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  gstreamer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gstreamer
+    volumes:
+      - ./test.mp4:/app/test.mp4
+    networks:
+      - kurento-network
+
+networks:
+  kurento-network:
+    external: true
+    name: kurento-network  # 상위 compose와 동일한 네트워크 이름 사용
+

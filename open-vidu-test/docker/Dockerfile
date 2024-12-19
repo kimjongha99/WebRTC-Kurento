@@ -1,0 +1,1 @@
+FROM openvidu/openvidu-dev:latest

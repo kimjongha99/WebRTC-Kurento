@@ -1,0 +1,21 @@
+name: openvidu-application
+
+services:
+  openvidu-server:
+    build: .
+    container_name: openvidu-server
+    restart: unless-stopped
+    ports:
+      - "4443:4443"
+    environment:
+      - OPENVIDU_SECRET=MY_SECRET
+      - DOMAIN_OR_PUBLIC_IP=localhost
+      - HTTPS_PORT=4443
+      - CERTIFICATE_TYPE=selfsigned
+    networks:
+      - openvidu-network
+
+networks:
+  openvidu-network:
+    name: openvidu-network
+    driver: bridge

@@ -23,8 +23,13 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'io.openvidu:openvidu-java-client:2.25.0'
+// https://mvnrepository.com/artifact/io.openvidu/openvidu-java-client
+	implementation group: 'io.openvidu', name: 'openvidu-java-client', version: '2.30.0'
+
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+	compileOnly 'org.projectlombok:lombok:1.18.34'
+	annotationProcessor 'org.projectlombok:lombok:1.18.34'  // 이 줄을 추가해주세요
 
 }
 

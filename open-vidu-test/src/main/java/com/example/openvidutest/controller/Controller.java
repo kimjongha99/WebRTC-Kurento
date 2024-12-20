@@ -4,6 +4,7 @@ import java.util.Map;
 
 import io.openvidu.java.client.*;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,45 +12,28 @@ import org.springframework.web.bind.annotation.*;
 
 @CrossOrigin(origins = "*")
 @RestController
+@RequiredArgsConstructor
 public class Controller {
+    private final OpenVidu openVidu;
 
-    @Value("${livekit.api.key}")
-    private String LIVEKIT_API_KEY;
-
-    @Value("${livekit.api.secret}")
-    private String LIVEKIT_API_SECRET;
-
-    /**
-     * @param params JSON object with roomName and participantName
-     * @return JSON object with the JWT token
-     */
-    @PostMapping(value = "/token")
-    public ResponseEntity<Map<String, String>> createToken(@RequestBody Map<String, String> params) {
-        String roomName = params.get("roomName");
-        String participantName = params.get("participantName");
-
-        if (roomName == null || participantName == null) {
-            return ResponseEntity.badRequest().body(Map.of("errorMessage", "roomName and participantName are required"));
-        }
-
-        AccessToken token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
-        token.setName(participantName);
-        token.setIdentity(participantName);
-        token.addGrants(new RoomJoin(true), new RoomName(roomName));
-
-        return ResponseEntity.ok(Map.of("token", token.toJwt()));
+    @PostMapping("/api/sessions")
+    public ResponseEntity<String> initializeSession(@RequestBody(required = false) Map<String, Object> params)
+            throws OpenViduJavaClientException, OpenViduHttpException {
+        SessionProperties properties = SessionProperties.fromJson(params).build();
+        Session session = openVidu.createSession(properties);
+        return new ResponseEntity<>(session.getSessionId(), HttpStatus.OK);
     }
 
-    @PostMapping(value = "/livekit/webhook", consumes = "application/webhook+json")
-    public ResponseEntity<String> receiveWebhook(@RequestHeader("Authorization") String authHeader, @RequestBody String body) {
-        WebhookReceiver webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
-        try {
-            WebhookEvent event = webhookReceiver.receive(body, authHeader);
-            System.out.println("LiveKit Webhook: " + event.toString());
-        } catch (Exception e) {
-            System.err.println("Error validating webhook event: " + e.getMessage());
+    @PostMapping("/api/sessions/{sessionId}/connections")
+    public ResponseEntity<String> createConnection(@PathVariable("sessionId") String sessionId,
+                                                   @RequestBody(required = false) Map<String, Object> params)
+            throws OpenViduJavaClientException, OpenViduHttpException {
+        Session session = openVidu.getActiveSession(sessionId);
+        if (session == null) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return ResponseEntity.ok("ok");
+        ConnectionProperties properties = ConnectionProperties.fromJson(params).build();
+        Connection connection = session.createConnection(properties);
+        return new ResponseEntity<>(connection.getToken(), HttpStatus.OK);
     }
-
 }

@@ -1,5 +1,6 @@
 services:
   kurento-media-server:
+    platform: linux/amd64  # 애플실리콘 이슈
     image: kurento/kurento-media-server:latest
     container_name: kurento-media-server
     restart: always

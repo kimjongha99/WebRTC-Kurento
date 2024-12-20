@@ -1,90 +1,132 @@
+let peerConnection;
 const ws = new WebSocket('ws://' + location.host + '/webrtc');
-let webRtcPeer;
+let localStream;
 
-// Basic UI elements
-let localVideo, remoteVideo;
+// Configuration for STUN/TURN servers if needed
+const configuration = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+    ]
+};
 
 window.onload = () => {
-    localVideo = document.getElementById('localVideo');
-    remoteVideo = document.getElementById('remoteVideo');
+    window.localVideo = document.getElementById('localVideo');
+    window.remoteVideo = document.getElementById('remoteVideo');
     console.log('Page loaded');
 };
 
 window.onbeforeunload = () => {
+    stop();
     ws.close();
 };
 
-// WebSocket message handling
-ws.onmessage = (message) => {
+ws.onmessage = async (message) => {
     const jsonMessage = JSON.parse(message.data);
-    console.log('Received:', jsonMessage);
+    console.log('Received message:', jsonMessage);
 
     switch (jsonMessage.id) {
         case 'PROCESS_SDP_ANSWER':
-            webRtcPeer.processAnswer(jsonMessage.sdpAnswer);
+            try {
+                await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription({
+                        type: 'answer',
+                        sdp: jsonMessage.sdpAnswer
+                    })
+                );
+            } catch (e) {
+                console.error('Error setting remote description:', e);
+            }
             break;
+
         case 'ADD_ICE_CANDIDATE':
-            webRtcPeer.addIceCandidate(jsonMessage.candidate);
+            try {
+                await peerConnection.addIceCandidate(jsonMessage.candidate);
+            } catch (e) {
+                console.error('Error adding ice candidate:', e);
+            }
             break;
+
         case 'ERROR':
-            stop();
             console.error(jsonMessage.message);
+            stop();
             break;
     }
 };
 
-// UI Actions
-function start() {
-    if (webRtcPeer) {
+async function start() {
+    if (peerConnection) {
+        console.warn('Already started');
         return;
     }
 
-    const options = {
-        localVideo: localVideo,
-        remoteVideo: remoteVideo,
-        onicecandidate: (candidate) => {
-            console.log('Local candidate:', candidate);
-            send({
-                id: 'ADD_ICE_CANDIDATE',
-                candidate: candidate
-            });
-        },
-        mediaConstraints: {
+    try {
+        // Get user media
+        localStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: true
-        }
-    };
-
-    webRtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerSendrecv(options, function(error) {
-        if (error) {
-            stop();
-            return console.error(error);
-        }
-        this.generateOffer((error, sdpOffer) => {
-            if (error) {
-                stop();
-                return console.error(error);
-            }
-            send({
-                id: 'PROCESS_SDP_OFFER',
-                sdpOffer: sdpOffer
-            });
         });
-    });
+
+        // Show local video
+        window.localVideo.srcObject = localStream;
+
+        // Create peer connection
+        peerConnection = new RTCPeerConnection(configuration);
+
+        // Add local stream tracks to peer connection
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        // Handle remote stream
+        peerConnection.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+                window.remoteVideo.srcObject = event.streams[0];
+            }
+        };
+
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                send({
+                    id: 'ADD_ICE_CANDIDATE',
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Create and send offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        send({
+            id: 'PROCESS_SDP_OFFER',
+            sdpOffer: offer.sdp
+        });
+
+    } catch (e) {
+        console.error('Error starting WebRTC:', e);
+        stop();
+    }
 }
 
 function stop() {
-    if (webRtcPeer) {
-        webRtcPeer.dispose();
-        webRtcPeer = null;
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
     }
-    send({
-        id: 'STOP'
-    });
+
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+
+    if (window.localVideo) window.localVideo.srcObject = null;
+    if (window.remoteVideo) window.remoteVideo.srcObject = null;
+
+    send({ id: 'STOP' });
 }
 
 function send(message) {
-    console.log('Sending id : => ', message.id);
-    const jsonMessage = JSON.stringify(message);
-    ws.send(jsonMessage);
+    console.log('Sending message:', message);
+    ws.send(JSON.stringify(message));
 }

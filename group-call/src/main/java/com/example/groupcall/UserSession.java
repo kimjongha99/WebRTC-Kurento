@@ -22,6 +22,9 @@ import com.google.gson.JsonObject;
 
 
 public class UserSession {
+    private static final Logger log = LoggerFactory.getLogger(UserSession.class);
+
+
     private final String name;
     private final String roomName;
     private final WebSocketSession session;
@@ -32,9 +35,20 @@ public class UserSession {
         this.name = name;
         this.roomName = roomName;
         this.session = session;
+        // WebRTC Endpoint 생성 로깅
+        log.info("WebRTC 엔드포인트 생성 - 사용자: {}, 룸: {}", name, roomName);
         this.outgoingMedia = new WebRtcEndpoint.Builder(pipeline).build();
+        log.info("outgoing WebRTC 엔드포인트 생성됨 - 사용자: {}, 룸: {}, EndpointId: {}",
+                name, roomName, outgoingMedia.getId());
+
+
+
 
         this.outgoingMedia.addIceCandidateFoundListener(event -> {
+            log.debug("ICE 후보 발견 - 사용자: {}, 룸: {}, 후보: {}",
+                    name, roomName, event.getCandidate());
+
+
             JsonObject response = new JsonObject();
             response.addProperty("id", "iceCandidate");
             response.addProperty("name", name);
@@ -73,7 +87,13 @@ public class UserSession {
     }
 
     private WebRtcEndpoint createNewWebRtcEndpoint(UserSession sender) {
+
+        log.info("수신 WebRTC 엔드포인트 생성 - 보낸 사람: {}, 받는 사람: {}, 방: {}",
+                sender.getName(), this.name, this.roomName);
+
         WebRtcEndpoint incoming = new WebRtcEndpoint.Builder(outgoingMedia.getMediaPipeline()).build();
+        log.info("수신 WebRTC incoming 생성 - 보낸 사람: {}, 받는 사람: {}, 방: {}, EndpointId: {}",
+                sender.getName(), this.name, this.roomName, incoming.getId());
 
         incoming.addIceCandidateFoundListener(event -> {
             JsonObject response = new JsonObject();
@@ -92,6 +112,9 @@ public class UserSession {
     public void cancelVideoFrom(String senderName) {
         WebRtcEndpoint incoming = incomingMedia.remove(senderName);
         if (incoming != null) {
+            log.info("수신 WebRTC 엔드포인트 해제 - 보낸 사람: {}, 받는 사람: {}, 방: {}, EndpointId: {}",
+                    senderName, this.name, this.roomName, incoming.getId());
+
             incoming.release();
         }
     }
@@ -118,8 +141,22 @@ public class UserSession {
     }
 
     public void close() {
-        incomingMedia.values().forEach(WebRtcEndpoint::release);
+        log.info("UserSession 닫기 - 사용자: {}, 회의실: {}", name, roomName);
+
+        // 수신 엔드포인트 정리
+        incomingMedia.forEach((senderName, endpoint) -> {
+            log.info("수신 WebRTC 엔드포인트 해제 - 보낸 사람: {}, 받는 사람: {}, 방: {}, EndpointId: {}",
+                    senderName, this.name, this.roomName, endpoint.getId());
+            endpoint.release();
+        });
+        incomingMedia.clear();
+
+        // 송신 엔드포인트 정리
+        log.info("발신 WebRTC 엔드포인트 해제 - 사용자: {}, Room: {}, EndpointId: {}",
+                name, roomName, outgoingMedia.getId());
         outgoingMedia.release();
+
+        log.info("사용자: {}, 방: {}에 대한 모든 리소스를 닫았습니다.", name, roomName);
     }
 
     // Getters

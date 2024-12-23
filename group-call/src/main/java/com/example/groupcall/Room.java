@@ -27,15 +27,23 @@ public class Room {
     private final String name;
     private final MediaPipeline pipeline;
     private final ConcurrentHashMap<String, UserSession> participants = new ConcurrentHashMap<>();
+    private static final Logger log = LoggerFactory.getLogger(Room.class);
+
 
     public Room(String name, MediaPipeline pipeline) {
         this.name = name;
         this.pipeline = pipeline;
+        log.info("새 Room 생성: {}, 파이프라인 ID: {}", name,pipeline.getId());
     }
 
+
     public UserSession join(String userName, WebSocketSession session) throws Exception {
+
+        log.info("사용자 {}이 Room {}에 참여하고 있습니다", userName, name);
         UserSession participant = new UserSession(userName, name, session, pipeline);
         participants.put(userName, participant);
+        log.info("사용자 {}이 Room {}에 참여했습니다. - 현재 참가자: {}",
+                userName, name, participants.keySet());
 
         // 새 참가자 입장을 다른 참가자들에게 알림
         sendNewParticipantNotification(participant);
@@ -46,6 +54,7 @@ public class Room {
     }
 
     public void leave(String userName) throws Exception {
+        log.info("사용자 {}이 Room {}을(를) 나가고 있습니다.", userName, name);
         UserSession user = participants.remove(userName);
         if (user != null) {
             // 다른 참가자들에게 퇴장 알림
@@ -61,8 +70,9 @@ public class Room {
                     // 오류 처리
                 }
             });
-
-            user.close();
+            log.info("사용자 {}이 회의실 {}에서 나갔습니다 - 나머지 참가자: {}",
+                    userName, name, participants.keySet());
+                    user.close();
         }
     }
 
@@ -106,6 +116,8 @@ public class Room {
         });
         participants.clear();
         pipeline.release();
+        log.info("미디어 파이프라인 해제 - 룸: {}, 파이프라인 ID: {}", name,pipeline.getId());
+        log.info("Room {}이 닫히고 모든 리소스가 해제되었습니다.", name);
     }
 
     // Getters

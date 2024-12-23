@@ -56,6 +56,7 @@ public class Room {
     public void leave(String userName) throws Exception {
         log.info("사용자 {}이 Room {}을(를) 나가고 있습니다.", userName, name);
         UserSession user = participants.remove(userName);
+
         if (user != null) {
             // 다른 참가자들에게 퇴장 알림
             JsonObject notification = new JsonObject();
@@ -70,9 +71,18 @@ public class Room {
                     // 오류 처리
                 }
             });
+
             log.info("사용자 {}이 회의실 {}에서 나갔습니다 - 나머지 참가자: {}",
                     userName, name, participants.keySet());
-                    user.close();
+            user.close();
+
+            // 마지막 참가자가 나갔을 때 파이프라인과 방 정리
+            if (participants.isEmpty()) {
+                log.info("회의실 {} - 마지막 참가자 퇴장, 파이프라인 정리", name);
+                pipeline.release();
+
+                log.info("회의실 {} - 파이프라인 정리 완료", name);
+            }
         }
     }
 

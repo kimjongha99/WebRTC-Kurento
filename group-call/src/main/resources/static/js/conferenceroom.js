@@ -1,131 +1,117 @@
-var ws = new WebSocket('ws://' + location.host + '/webrtc');
-var participants = {};
-var name;
-var room;
+// WebSocket 연결 설정
+const ws = new WebSocket('ws://' + location.host + '/webrtc');
+const participants = {};  // 참가자 목록
+let myName;              // 내 이름
+let roomName;           // 방 이름
 
-window.onbeforeunload = function() {
-    ws.close();
-};
-
+// 웹소켓 메시지 처리
 ws.onmessage = function(message) {
-    var parsedMessage = JSON.parse(message.data);
-    console.info('Received message: ' + message.data);
+    const msg = JSON.parse(message.data);
 
-    switch (parsedMessage.id) {
-        case 'existingParticipants':
-            onExistingParticipants(parsedMessage);
+    switch (msg.id) {
+        case 'existingParticipants':    // 방에 입장했을 때
+            handleExistingParticipants(msg);
             break;
-        case 'newParticipantArrived':
-            onNewParticipant(parsedMessage);
+        case 'newParticipantArrived':   // 새 참가자가 들어왔을 때
+            handleNewParticipant(msg.name);
             break;
-        case 'participantLeft':
-            onParticipantLeft(parsedMessage);
+        case 'participantLeft':         // 참가자가 나갔을 때
+            handleParticipantLeft(msg.name);
             break;
-        case 'receiveVideoAnswer':
-            receiveVideoResponse(parsedMessage);
+        case 'receiveVideoAnswer':      // 비디오 응답 받았을 때
+            participants[msg.name].rtcPeer.processAnswer(msg.sdpAnswer);
             break;
-        case 'iceCandidate':
-            participants[parsedMessage.name].rtcPeer.addIceCandidate(parsedMessage.candidate)
-                .catch(error => {
-                    console.error("Error adding candidate: " + error);
-                });
+        case 'iceCandidate':           // ICE candidate 받았을 때
+            participants[msg.name].rtcPeer.addIceCandidate(msg.candidate);
             break;
-        default:
-            console.error('Unrecognized message', parsedMessage);
     }
 }
 
+// 방 입장
 function register() {
-    name = document.getElementById('name').value;
-    room = document.getElementById('roomName').value;
+    myName = document.getElementById('name').value;
+    roomName = document.getElementById('roomName').value;
 
-    document.getElementById('room-header').innerText = 'ROOM ' + room;
+    // UI 업데이트
+    document.getElementById('room-header').innerText = 'ROOM: ' + roomName;
     document.getElementById('join').style.display = 'none';
     document.getElementById('room').style.display = 'block';
 
-    var message = {
+    // 서버에 입장 메시지 전송
+    sendMessage({
         id: 'joinRoom',
-        name: name,
-        room: room,
-    }
-    sendMessage(message);
+        name: myName,
+        room: roomName,
+    });
 }
 
-function onNewParticipant(request) {
-    receiveVideo(request.name);
-}
-
-function receiveVideoResponse(result) {
-    participants[result.name].rtcPeer.processAnswer(result.sdpAnswer)
-        .catch(error => console.error(error));
-}
-
-function onExistingParticipants(msg) {
-    var constraints = {
+// 기존 참가자 처리
+function handleExistingParticipants(msg) {
+    // 비디오 설정
+    const constraints = {
         audio: true,
         video: {
-            mandatory: {
-                maxWidth: 320,
-                maxFrameRate: 15,
-                minFrameRate: 15
-            }
+            maxWidth: 320,
+            frameRate: { max: 15, min: 15 }
         }
     };
-    console.log(name + " registered in room " + room);
-    var participant = new Participant(name);
-    participants[name] = participant;
-    var video = participant.getVideoElement();
 
-    var options = {
-        localVideo: video,
+    // 내 비디오 설정
+    const participant = new Participant(myName);
+    participants[myName] = participant;
+
+    const options = {
+        localVideo: participant.getVideoElement(),
         mediaConstraints: constraints,
+        onicecandidate: participant.onIceCandidate.bind(participant)
+    }
+
+    // WebRTC 연결 설정
+    participant.rtcPeer = new WebRTCPeer(options);
+    participant.rtcPeer.generateOffer(participant.offerToReceiveVideo.bind(participant));
+
+    // 기존 참가자들의 비디오 받기
+    msg.data.forEach(handleNewParticipant);
+}
+
+// 새 참가자 처리
+function handleNewParticipant(name) {
+    const participant = new Participant(name);
+    participants[name] = participant;
+
+    const options = {
+        remoteVideo: participant.getVideoElement(),
         onicecandidate: participant.onIceCandidate.bind(participant)
     }
 
     participant.rtcPeer = new WebRTCPeer(options);
     participant.rtcPeer.generateOffer(participant.offerToReceiveVideo.bind(participant));
-
-    msg.data.forEach(receiveVideo);
 }
 
+// 참가자 퇴장 처리
+function handleParticipantLeft(name) {
+    participants[name].dispose();
+    delete participants[name];
+}
+
+// 방 나가기
 function leaveRoom() {
-    sendMessage({
-        id: 'leaveRoom'
-    });
+    sendMessage({ id: 'leaveRoom' });
 
-    for (var key in participants) {
-        participants[key].dispose();
-    }
+    // 모든 참가자 정리
+    Object.values(participants).forEach(p => p.dispose());
 
+    // UI 초기화
     document.getElementById('join').style.display = 'block';
     document.getElementById('room').style.display = 'none';
 
     ws.close();
 }
 
-function receiveVideo(sender) {
-    var participant = new Participant(sender);
-    participants[sender] = participant;
-    var video = participant.getVideoElement();
-
-    var options = {
-        remoteVideo: video,
-        onicecandidate: participant.onIceCandidate.bind(participant)
-    }
-
-    participant.rtcPeer = new WebRTCPeer(options);
-    participant.rtcPeer.generateOffer(participant.offerToReceiveVideo.bind(participant));
-}
-
-function onParticipantLeft(request) {
-    console.log('Participant ' + request.name + ' left');
-    var participant = participants[request.name];
-    participant.dispose();
-    delete participants[request.name];
-}
-
+// 메시지 전송 헬퍼 함수
 function sendMessage(message) {
-    var jsonMessage = JSON.stringify(message);
-    console.log('Sending message: ' + jsonMessage);
-    ws.send(jsonMessage);
+    ws.send(JSON.stringify(message));
 }
+
+// 페이지 닫을 때 웹소켓 정리
+window.onbeforeunload = () => ws.close();

@@ -1,104 +1,54 @@
-/*
- * (C) Copyright 2014 Kurento (http://kurento.org/)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- */
-
-const PARTICIPANT_MAIN_CLASS = 'participant main';
-const PARTICIPANT_CLASS = 'participant';
-
-/**
- * Creates a video element for a new participant
- *
- * @param {String} name - the name of the new participant, to be used as tag
- *                        name of the video element.
- *                        The tag of the new element will be 'video<name>'
- * @return
- */
 function Participant(name) {
     this.name = name;
-    var container = document.createElement('div');
-    container.className = isPresentMainParticipant() ? PARTICIPANT_CLASS : PARTICIPANT_MAIN_CLASS;
-    container.id = name;
-    var span = document.createElement('span');
-    var video = document.createElement('video');
-    var rtcPeer;
+    this.rtcPeer = null;
 
-    container.appendChild(video);
-    container.appendChild(span);
-    container.onclick = switchContainerClass;
-    document.getElementById('participants').appendChild(container);
+    // 기본 요소 생성
+    const container = document.createElement('div');
+    const video = document.createElement('video');
+    const nameLabel = document.createElement('span');
 
-    span.appendChild(document.createTextNode(name));
-
+    // 비디오 설정
     video.id = 'video-' + name;
     video.autoplay = true;
     video.controls = false;
+    video.style.width = '300px';  // 기본 비디오 크기 설정
 
+    // 이름 표시
+    nameLabel.textContent = name;
 
-    this.getElement = function() {
-        return container;
-    }
+    // 요소 조립 및 추가
+    container.appendChild(video);
+    container.appendChild(nameLabel);
+    document.getElementById('participants').appendChild(container);
 
+    // WebRTC 관련 필수 메서드들
     this.getVideoElement = function() {
         return video;
-    }
+    };
 
-    function switchContainerClass() {
-        if (container.className === PARTICIPANT_CLASS) {
-            var elements = Array.prototype.slice.call(document.getElementsByClassName(PARTICIPANT_MAIN_CLASS));
-            elements.forEach(function(item) {
-                item.className = PARTICIPANT_CLASS;
-            });
+    this.offerToReceiveVideo = function(error, offerSdp) {
+        if (error) return;
 
-            container.className = PARTICIPANT_MAIN_CLASS;
-        } else {
-            container.className = PARTICIPANT_CLASS;
-        }
-    }
+        sendMessage({
+            id: "receiveVideoFrom",
+            sender: name,
+            sdpOffer: offerSdp
+        });
+    };
 
-    function isPresentMainParticipant() {
-        return ((document.getElementsByClassName(PARTICIPANT_MAIN_CLASS)).length != 0);
-    }
-
-    this.offerToReceiveVideo = function(error, offerSdp, wp){
-        if (error) return console.error ("sdp offer error")
-        console.log('Invoking SDP offer callback function');
-        var msg =  { id : "receiveVideoFrom",
-            sender : name,
-            sdpOffer : offerSdp
-        };
-        sendMessage(msg);
-    }
-
-
-    this.onIceCandidate = function (candidate, wp) {
-        console.log("Local candidate" + JSON.stringify(candidate));
-
-        var message = {
+    this.onIceCandidate = function(candidate) {
+        sendMessage({
             id: 'onIceCandidate',
             candidate: candidate,
             name: name
-        };
-        sendMessage(message);
-    }
+        });
+    };
 
-    Object.defineProperty(this, 'rtcPeer', { writable: true});
-
+    // 참가자 퇴장 처리
     this.dispose = function() {
-        console.log('Disposing participant ' + this.name);
-        this.rtcPeer.dispose();
-        container.parentNode.removeChild(container);
+        if (this.rtcPeer) {
+            this.rtcPeer.dispose();
+        }
+        container.remove();
     };
 }

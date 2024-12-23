@@ -22,146 +22,94 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
-/**
- * @author Ivan Gracia (izanmail@gmail.com)
- * @since 4.3.1
- */
-public class Room implements Closeable {
-    private final Logger log = LoggerFactory.getLogger(Room.class);
 
-    private final ConcurrentMap<String, UserSession> participants = new ConcurrentHashMap<>();
-    private final MediaPipeline pipeline;
+public class Room {
     private final String name;
+    private final MediaPipeline pipeline;
+    private final ConcurrentHashMap<String, UserSession> participants = new ConcurrentHashMap<>();
 
-    public String getName() {
-        return name;
-    }
-
-    public Room(String roomName, MediaPipeline pipeline) {
-        this.name = roomName;
+    public Room(String name, MediaPipeline pipeline) {
+        this.name = name;
         this.pipeline = pipeline;
-        log.info("ROOM {} has been created", roomName);
     }
 
-    @PreDestroy
-    private void shutdown() {
-        this.close();
-    }
+    public UserSession join(String userName, WebSocketSession session) throws Exception {
+        UserSession participant = new UserSession(userName, name, session, pipeline);
+        participants.put(userName, participant);
 
-    public UserSession join(String userName, WebSocketSession session) throws IOException {
-        log.info("ROOM {}: adding participant {}", this.name, userName);
-        final UserSession participant = new UserSession(userName, this.name, session, this.pipeline);
-        joinRoom(participant);
-        participants.put(participant.getName(), participant);
-        sendParticipantNames(participant);
+        // 새 참가자 입장을 다른 참가자들에게 알림
+        sendNewParticipantNotification(participant);
+        // 새 참가자에게 기존 참가자 목록 전송
+        sendExistingParticipants(participant);
+
         return participant;
     }
 
-    public void leave(UserSession user) throws IOException {
-        log.debug("PARTICIPANT {}: Leaving room {}", user.getName(), this.name);
-        this.removeParticipant(user.getName());
-        user.close();
+    public void leave(String userName) throws Exception {
+        UserSession user = participants.remove(userName);
+        if (user != null) {
+            // 다른 참가자들에게 퇴장 알림
+            JsonObject notification = new JsonObject();
+            notification.addProperty("id", "participantLeft");
+            notification.addProperty("name", userName);
+
+            participants.values().forEach(participant -> {
+                try {
+                    participant.cancelVideoFrom(userName);
+                    participant.sendMessage(notification);
+                } catch (Exception e) {
+                    // 오류 처리
+                }
+            });
+
+            user.close();
+        }
     }
 
-    private Collection<String> joinRoom(UserSession newParticipant) throws IOException {
-        final JsonObject newParticipantMsg = new JsonObject();
-        newParticipantMsg.addProperty("id", "newParticipantArrived");
-        newParticipantMsg.addProperty("name", newParticipant.getName());
+    private void sendNewParticipantNotification(UserSession newParticipant) {
+        JsonObject notification = new JsonObject();
+        notification.addProperty("id", "newParticipantArrived");
+        notification.addProperty("name", newParticipant.getName());
 
-        final List<String> participantsList = new ArrayList<>(participants.values().size());
-        log.debug("ROOM {}: notifying other participants of new participant {}", name,
-                newParticipant.getName());
-
-        for (final UserSession participant : participants.values()) {
-            try {
-                participant.sendMessage(newParticipantMsg);
-            } catch (final IOException e) {
-                log.debug("ROOM {}: participant {} could not be notified", name, participant.getName(), e);
+        participants.values().forEach(participant -> {
+            if (!participant.equals(newParticipant)) {
+                try {
+                    participant.sendMessage(notification);
+                } catch (Exception e) {
+                    // 오류 처리
+                }
             }
-            participantsList.add(participant.getName());
-        }
-
-        return participantsList;
+        });
     }
 
-    private void removeParticipant(String name) throws IOException {
-        participants.remove(name);
-
-        log.debug("ROOM {}: notifying all users that {} is leaving the room", this.name, name);
-
-        final List<String> unnotifiedParticipants = new ArrayList<>();
-        final JsonObject participantLeftJson = new JsonObject();
-        participantLeftJson.addProperty("id", "participantLeft");
-        participantLeftJson.addProperty("name", name);
-        for (final UserSession participant : participants.values()) {
-            try {
-                participant.cancelVideoFrom(name);
-                participant.sendMessage(participantLeftJson);
-            } catch (final IOException e) {
-                unnotifiedParticipants.add(participant.getName());
-            }
-        }
-
-        if (!unnotifiedParticipants.isEmpty()) {
-            log.debug("ROOM {}: The users {} could not be notified that {} left the room", this.name,
-                    unnotifiedParticipants, name);
-        }
-
-    }
-
-    public void sendParticipantNames(UserSession user) throws IOException {
-
-        final JsonArray participantsArray = new JsonArray();
-        for (final UserSession participant : this.getParticipants()) {
+    private void sendExistingParticipants(UserSession user) throws Exception {
+        JsonArray participantsArray = new JsonArray();
+        participants.values().forEach(participant -> {
             if (!participant.equals(user)) {
-                final JsonElement participantName = new JsonPrimitive(participant.getName());
-                participantsArray.add(participantName);
-            }
-        }
-
-        final JsonObject existingParticipantsMsg = new JsonObject();
-        existingParticipantsMsg.addProperty("id", "existingParticipants");
-        existingParticipantsMsg.add("data", participantsArray);
-        log.debug("PARTICIPANT {}: sending a list of {} participants", user.getName(),
-                participantsArray.size());
-        user.sendMessage(existingParticipantsMsg);
-    }
-
-    public Collection<UserSession> getParticipants() {
-        return participants.values();
-    }
-
-    public UserSession getParticipant(String name) {
-        return participants.get(name);
-    }
-
-    @Override
-    public void close() {
-        for (final UserSession user : participants.values()) {
-            try {
-                user.close();
-            } catch (IOException e) {
-                log.debug("ROOM {}: Could not invoke close on participant {}", this.name, user.getName(),
-                        e);
-            }
-        }
-
-        participants.clear();
-
-        pipeline.release(new Continuation<Void>() {
-
-            @Override
-            public void onSuccess(Void result) throws Exception {
-                log.trace("ROOM {}: Released Pipeline", Room.this.name);
-            }
-
-            @Override
-            public void onError(Throwable cause) throws Exception {
-                log.warn("PARTICIPANT {}: Could not release Pipeline", Room.this.name);
+                participantsArray.add(participant.getName());
             }
         });
 
-        log.debug("Room {} closed", this.name);
+        JsonObject existingParticipantsMsg = new JsonObject();
+        existingParticipantsMsg.addProperty("id", "existingParticipants");
+        existingParticipantsMsg.add("data", participantsArray);
+        user.sendMessage(existingParticipantsMsg);
     }
 
+    public void close() {
+        participants.values().forEach(participant -> {
+            try {
+                participant.close();
+            } catch (Exception e) {
+                // 오류 처리
+            }
+        });
+        participants.clear();
+        pipeline.release();
+    }
+
+    // Getters
+    public String getName() { return name; }
+    public Collection<UserSession> getParticipants() { return participants.values(); }
+    public UserSession getParticipant(String name) { return participants.get(name); }
 }

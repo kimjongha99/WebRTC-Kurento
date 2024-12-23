@@ -16,83 +16,85 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 
-/**
- *
- * @author Ivan Gracia (izanmail@gmail.com)
- * @since 4.3.1
- */
+
+import org.kurento.client.IceCandidate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+
 public class CallHandler extends TextWebSocketHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(CallHandler.class);
-
-    private static final Gson gson = new GsonBuilder().create();
+    private final Gson gson = new Gson();
 
     @Autowired
     private RoomManager roomManager;
 
     @Autowired
-    private UserRegistry registry;
+    private UserRegistry userRegistry;
 
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        final JsonObject jsonMessage = gson.fromJson(message.getPayload(), JsonObject.class);
+        JsonObject jsonMessage = gson.fromJson(message.getPayload(), JsonObject.class);
+        UserSession user = userRegistry.getBySession(session);
+        String messageId = jsonMessage.get("id").getAsString();
 
-        final UserSession user = registry.getBySession(session);
-
-        if (user != null) {
-            log.debug("Incoming message from user '{}': {}", user.getName(), jsonMessage);
-        } else {
-            log.debug("Incoming message from new user: {}", jsonMessage);
-        }
-
-        switch (jsonMessage.get("id").getAsString()) {
+        switch (messageId) {
             case "joinRoom":
                 joinRoom(jsonMessage, session);
                 break;
             case "receiveVideoFrom":
-                final String senderName = jsonMessage.get("sender").getAsString();
-                final UserSession sender = registry.getByName(senderName);
-                final String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
-                user.receiveVideoFrom(sender, sdpOffer);
+                String senderName = jsonMessage.get("sender").getAsString();
+                user.receiveVideoFrom(
+                        userRegistry.getByName(senderName),
+                        jsonMessage.get("sdpOffer").getAsString()
+                );
                 break;
             case "leaveRoom":
                 leaveRoom(user);
                 break;
             case "onIceCandidate":
-                JsonObject candidate = jsonMessage.get("candidate").getAsJsonObject();
+                handleIceCandidate(jsonMessage, user);
+                break;
+        }
+    }
 
-                if (user != null) {
-                    IceCandidate cand = new IceCandidate(candidate.get("candidate").getAsString(),
-                            candidate.get("sdpMid").getAsString(), candidate.get("sdpMLineIndex").getAsInt());
-                    user.addCandidate(cand, jsonMessage.get("name").getAsString());
-                }
-                break;
-            default:
-                break;
+    private void joinRoom(JsonObject params, WebSocketSession session) throws Exception {
+        String roomName = params.get("room").getAsString();
+        String userName = params.get("name").getAsString();
+
+        Room room = roomManager.getRoom(roomName);
+        UserSession user = room.join(userName, session);
+        userRegistry.register(user);
+    }
+
+    private void leaveRoom(UserSession user) throws Exception {
+        Room room = roomManager.getRoom(user.getRoomName());
+        room.leave(user.getName());
+        if (room.getParticipants().isEmpty()) {
+            roomManager.removeRoom(room.getName());
+        }
+    }
+
+    private void handleIceCandidate(JsonObject jsonMessage, UserSession user) {
+        if (user != null) {
+            JsonObject candidateJson = jsonMessage.get("candidate").getAsJsonObject();
+            IceCandidate candidate = new IceCandidate(
+                    candidateJson.get("candidate").getAsString(),
+                    candidateJson.get("sdpMid").getAsString(),
+                    candidateJson.get("sdpMLineIndex").getAsInt()
+            );
+            user.addCandidate(candidate, jsonMessage.get("name").getAsString());
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        UserSession user = registry.removeBySession(session);
-        roomManager.getRoom(user.getRoomName()).leave(user);
-    }
-
-    private void joinRoom(JsonObject params, WebSocketSession session) throws IOException {
-        final String roomName = params.get("room").getAsString();
-        final String name = params.get("name").getAsString();
-        log.info("PARTICIPANT {}: trying to join room {}", name, roomName);
-
-        Room room = roomManager.getRoom(roomName);
-        final UserSession user = room.join(name, session);
-        registry.register(user);
-    }
-
-    private void leaveRoom(UserSession user) throws IOException {
-        final Room room = roomManager.getRoom(user.getRoomName());
-        room.leave(user);
-        if (room.getParticipants().isEmpty()) {
-            roomManager.removeRoom(room);
+        UserSession user = userRegistry.removeBySession(session);
+        if (user != null) {
+            Room room = roomManager.getRoom(user.getRoomName());
+            room.leave(user.getName());
         }
     }
 }

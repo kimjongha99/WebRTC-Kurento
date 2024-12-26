@@ -8,7 +8,6 @@
     <script src="/js/participant.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css" />
-
 </head>
 <body>
 <div id="container">
@@ -23,11 +22,14 @@
         </div>
         <div id="room" style="display: none;">
             <h2 id="room-header"></h2>
+            <div class="button-container">
+                <button id="button-leave" onclick="leaveRoom();">Leave room</button>
+                <button id="button-share" onclick="toggleScreenShare();">Share Screen</button>
+            </div>
             <div id="participants"></div>
-            <button id="button-leave" onclick="leaveRoom();">Leave room</button>
+            <div id="screen-shares"></div>
         </div>
     </div>
 </div>
-
 </body>
 </html>

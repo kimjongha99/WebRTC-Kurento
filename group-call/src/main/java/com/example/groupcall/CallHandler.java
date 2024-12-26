@@ -47,6 +47,15 @@ public class CallHandler extends TextWebSocketHandler  {
             case "receiveVideoFrom":
                 handleReceiveVideoFrom(jsonMessage, user);
                 break;
+            case "presentScreen":
+                handlePresentScreen(jsonMessage, user);
+                break;
+            case "receiveScreenFrom":
+                handleReceiveScreenFrom(jsonMessage, user);
+                break;
+            case "stopScreenShare":
+                handleStopScreenShare(jsonMessage, user);
+                break;
             case "leaveRoom":
                 leaveRoom(user);
                 break;
@@ -58,6 +67,8 @@ public class CallHandler extends TextWebSocketHandler  {
                 break;
         }
     }
+
+
 
     private void joinRoom(JsonObject params, WebSocketSession session) throws Exception {
         String roomName = params.get("room").getAsString();
@@ -89,6 +100,41 @@ public class CallHandler extends TextWebSocketHandler  {
         }
     }
 
+
+
+    private void handlePresentScreen(JsonObject jsonMessage, User user) throws Exception {
+        if (user != null) {
+            Room room = Room.getRoom(user.getRoomName());
+            Screen screen = room.startScreenShare(user.getName());
+
+            String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
+            screen.startScreenShare(sdpOffer);
+
+            room.notifyScreenShare(user.getName());
+        }
+    }
+
+    private void handleReceiveScreenFrom(JsonObject jsonMessage, User user) throws Exception {
+        if (user != null) {
+            String senderName = jsonMessage.get("sender").getAsString();
+            Room room = Room.getRoom(user.getRoomName());
+            Screen receiverScreen = room.startScreenShare(user.getName());
+            Screen senderScreen = room.getScreenShare(senderName);
+
+            if (senderScreen != null) {
+                String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
+                receiverScreen.receiveScreenFrom(senderScreen, sdpOffer);
+            }
+        }
+    }
+
+    private void handleStopScreenShare(JsonObject jsonMessage, User user) throws Exception {
+        if (user != null) {
+            Room room = Room.getRoom(user.getRoomName());
+            room.stopScreenShare(user.getName());
+        }
+    }
+
     private void handleIceCandidate(JsonObject jsonMessage, User user) {
         if (user != null) {
             JsonObject candidateJson = jsonMessage.get("candidate").getAsJsonObject();
@@ -97,7 +143,17 @@ public class CallHandler extends TextWebSocketHandler  {
                     candidateJson.get("sdpMid").getAsString(),
                     candidateJson.get("sdpMLineIndex").getAsInt()
             );
-            user.addCandidate(candidate, jsonMessage.get("name").getAsString());
+
+            String type = jsonMessage.has("type") ? jsonMessage.get("type").getAsString() : "video";
+            if ("screen".equals(type)) {
+                Room room = Room.getRoom(user.getRoomName());
+                Screen screen = room.getScreenShare(user.getName());
+                if (screen != null) {
+                    screen.addCandidate(candidate, jsonMessage.get("name").getAsString());
+                }
+            } else {
+                user.addCandidate(candidate, jsonMessage.get("name").getAsString());
+            }
         }
     }
 
@@ -107,7 +163,9 @@ public class CallHandler extends TextWebSocketHandler  {
         User user = User.removeBySession(session);
         if (user != null) {
             Room room = Room.getRoom(user.getRoomName());
+            room.stopScreenShare(user.getName());
             room.leave(user.getName());
         }
     }
+
 }

@@ -3,6 +3,9 @@ const ws = new WebSocket('ws://' + location.host + '/webrtc');
 const participants = {};  // 참가자 목록
 let myName;              // 내 이름
 let roomName;           // 방 이름
+const screenShares = {};       // 화면 공유 목록
+let isScreenSharing = false;   // 화면 공유 상태
+
 
 // 웹소켓 메시지 처리
 ws.onmessage = function(message) {
@@ -21,11 +24,149 @@ ws.onmessage = function(message) {
         case 'receiveVideoAnswer':      // 비디오 응답 받았을 때
             participants[msg.name].rtcPeer.processAnswer(msg.sdpAnswer);
             break;
-        case 'iceCandidate':           // ICE candidate 받았을 때
-            participants[msg.name].rtcPeer.addIceCandidate(msg.candidate);
+        case 'receiveScreenAnswer':
+            screenShares[msg.name].rtcPeer.processAnswer(msg.sdpAnswer);
             break;
+        case 'iceCandidate':
+            if (msg.type === 'screen') {
+                screenShares[msg.name].rtcPeer.addIceCandidate(msg.candidate);
+            } else {
+                participants[msg.name].rtcPeer.addIceCandidate(msg.candidate);
+            }
+            break;
+
+        case 'newScreenShareStarted':
+            handleNewScreenShare(msg.name);
+            break;
+        case 'screenShareEnded':
+            handleScreenShareEnded(msg.name);
+            break;
+
+
+
+
     }
 }
+
+  //화면공유
+async function toggleScreenShare() {
+    const shareButton = document.getElementById('button-share');
+
+    if (!isScreenSharing) {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 44100
+                }
+            });
+
+            // 화면 공유 중단 이벤트 처리
+            stream.getVideoTracks()[0].addEventListener('ended', () => {
+                stopScreenShare();
+            });
+
+            const screenParticipant = new Participant(myName, 'screen');
+            screenShares[myName] = screenParticipant;
+
+            const options = {
+                localVideo: screenParticipant.getVideoElement(),
+                videoStream: stream,  // 화면 공유 스트림 직접 전달
+                onicecandidate: (candidate) => {
+                    sendMessage({
+                        id: 'onIceCandidate',
+                        candidate: candidate,
+                        name: myName,
+                        type: 'screen'
+                    });
+                }
+            };
+
+            screenParticipant.rtcPeer = new WebRTCPeer(options);
+            screenParticipant.rtcPeer.generateOffer((error, offerSdp) => {
+                if (error) {
+                    console.error(error);
+                    return;
+                }
+                sendMessage({
+                    id: 'presentScreen',
+                    name: myName,
+                    sdpOffer: offerSdp
+                });
+            });
+
+            isScreenSharing = true;
+            shareButton.textContent = 'Stop Sharing';
+
+        } catch (e) {
+            console.error('Error starting screen share:', e);
+        }
+    } else {
+        stopScreenShare();
+    }
+}
+function stopScreenShare() {
+    if (screenShares[myName]) {
+        sendMessage({
+            id: 'stopScreenShare',
+            name: myName
+        });
+        screenShares[myName].dispose();
+        delete screenShares[myName];
+    }
+    isScreenSharing = false;
+    document.getElementById('button-share').textContent = 'Share Screen';
+}
+
+function handleNewScreenShare(name) {
+    console.log('New screen share from:', name);
+    const screenParticipant = new Participant(name, 'screen');
+    screenShares[name] = screenParticipant;
+
+    const options = {
+        remoteVideo: screenParticipant.getVideoElement(),
+        onicecandidate: (candidate) => {
+            sendMessage({
+                id: 'onIceCandidate',
+                candidate: candidate,
+                name: name,
+                type: 'screen'
+            });
+        }
+    };
+
+    screenParticipant.rtcPeer = new WebRTCPeer(options);
+    screenParticipant.rtcPeer.generateOffer((error, offerSdp) => {
+        if (error) {
+            console.error(error);
+            return;
+        }
+        console.log('Sending screen offer to:', name);
+        sendMessage({
+            id: 'receiveScreenFrom',
+            sender: name,
+            sdpOffer: offerSdp
+        });
+    });
+}
+
+
+function handleScreenShareEnded(name) {
+    if (screenShares[name]) {
+        screenShares[name].dispose();
+        delete screenShares[name];
+    }
+}
+
+
+
+
+
+
+
+
 
 // 방 입장
 function register() {
@@ -76,17 +217,37 @@ function handleExistingParticipants(msg) {
 
 // 새 참가자 처리
 function handleNewParticipant(name) {
+    console.log('New participant:', name);
     const participant = new Participant(name);
     participants[name] = participant;
 
     const options = {
         remoteVideo: participant.getVideoElement(),
-        onicecandidate: participant.onIceCandidate.bind(participant)
-    }
+        onicecandidate: (candidate) => {
+            sendMessage({
+                id: 'onIceCandidate',
+                candidate: candidate,
+                name: name,
+                type: 'video'
+            });
+        }
+    };
 
     participant.rtcPeer = new WebRTCPeer(options);
-    participant.rtcPeer.generateOffer(participant.offerToReceiveVideo.bind(participant));
+    participant.rtcPeer.generateOffer((error, offerSdp) => {
+        if (error) {
+            console.error(error);
+            return;
+        }
+        console.log('Sending video offer to:', name);
+        sendMessage({
+            id: 'receiveVideoFrom',
+            sender: name,
+            sdpOffer: offerSdp
+        });
+    });
 }
+
 
 // 참가자 퇴장 처리
 function handleParticipantLeft(name) {

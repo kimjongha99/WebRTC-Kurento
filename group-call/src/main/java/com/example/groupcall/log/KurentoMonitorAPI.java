@@ -88,40 +88,63 @@ public class KurentoMonitorAPI {
         }
     }
 
-    @GetMapping("/monitor/room/{roomId}")
-    public ResponseEntity<Object> monitorRoom(@PathVariable String roomId) {
+    @GetMapping("/monitor/screen/session")
+    public ResponseEntity<Object> monitorScreenSession() {
+        try {
+            JsonObject response = new JsonObject();
+            Collection<Room> rooms = Room.findRooms();
+
+            rooms.forEach(room -> {
+                JsonObject roomInfo = new JsonObject();
+                room.getScreenShares().forEach(screen -> {
+                    JsonObject screenInfo = new JsonObject();
+                    screenInfo.addProperty("userName", screen.getUserName());
+//                    screenInfo.addProperty("webSocketSessionId", screen.getSession().getId());
+                    screenInfo.addProperty("endpointId", screen.getOutgoingScreenMedia().getId());
+                    screenInfo.addProperty("isSharing", screen.isSharing());
+                    roomInfo.add(screen.getUserName(), screenInfo);
+                });
+                if (!roomInfo.entrySet().isEmpty()) {
+                    response.add(room.getName(), roomInfo);
+                }
+            });
+
+            log.info("화면 공유 세션 모니터링 완료");
+            return ResponseEntity.ok(new ObjectMapper().readValue(response.toString(), Object.class));
+        } catch (Exception e) {
+            log.error("화면 공유 세션 모니터링 실패: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("화면 공유 세션 모니터링 실패: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/monitor/room/{roomId}/screens")
+    public ResponseEntity<Object> monitorRoomScreens(@PathVariable String roomId) {
         try {
             Room room = Room.findRoom(roomId);
             if (room == null) {
                 return ResponseEntity.notFound().build();
             }
 
-            JsonObject response = room.getRoomStats();
-            log.info("방 {} 모니터링 완료", roomId);
+            JsonObject response = new JsonObject();
+            response.addProperty("roomName", room.getName());
+            JsonObject screenShares = new JsonObject();
+
+            room.getScreenShares().forEach(screen -> {
+                JsonObject screenInfo = new JsonObject();
+                screenInfo.addProperty("userName", screen.getUserName());
+                screenInfo.addProperty("endpointId", screen.getOutgoingScreenMedia().getId());
+                screenInfo.addProperty("isSharing", screen.isSharing());
+                screenShares.add(screen.getUserName(), screenInfo);
+            });
+
+            response.add("screenShares", screenShares);
+            log.info("방 {} 화면 공유 모니터링 완료", roomId);
             return ResponseEntity.ok(new ObjectMapper().readValue(response.toString(), Object.class));
         } catch (Exception e) {
-            log.error("방 모니터링 실패: {}", e.getMessage(), e);
+            log.error("방 화면 공유 모니터링 실패: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("방 모니터링 실패: " + e.getMessage());
-        }
-    }
-
-    @GetMapping("/{roomName}/stats")
-    public ResponseEntity<Object> getRoomStats(@PathVariable String roomName) {
-        try {
-            Room room = Room.findRoom(roomName);
-            if (room == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            JsonObject roomStats = room.getRoomStats();
-            return ResponseEntity.ok(new ObjectMapper().readValue(roomStats.toString(), Object.class));
-        } catch (Exception e) {
-            log.error("방 통계 조회 실패: {}", e.getMessage(), e);
-            JsonObject errorResponse = new JsonObject();
-            errorResponse.addProperty("error", "Failed to retrieve room stats");
-            errorResponse.addProperty("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+                    .body("방 화면 공유 모니터링 실패: " + e.getMessage());
         }
     }
 }

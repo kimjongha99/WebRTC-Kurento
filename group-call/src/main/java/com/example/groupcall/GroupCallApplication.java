@@ -4,9 +4,6 @@ import org.kurento.client.KurentoClient;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.scheduling.TaskScheduler;
-import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
@@ -14,26 +11,10 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 
 @SpringBootApplication
 @EnableWebSocket
-@EnableScheduling  // 스케줄러 활성화 추가
-
 public class GroupCallApplication implements WebSocketConfigurer {
-    @Bean
-    public CallHandler handler() {
-        return new CallHandler();
-    }
 
     @Bean
-    public UserRegistry registry() {
-        return new UserRegistry();
-    }
-
-    @Bean
-    public RoomManager roomManager() {
-        return new RoomManager();
-    }
-
-    @Bean
-    public CallHandler groupCallHandler() {
+    public CallHandler callHandler() {
         return new CallHandler();
     }
 
@@ -41,6 +22,7 @@ public class GroupCallApplication implements WebSocketConfigurer {
     public KurentoClient kurentoClient() {
         return KurentoClient.create();
     }
+
     @Bean
     public ServletServerContainerFactoryBean createServletServerContainerFactoryBean() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
@@ -50,23 +32,10 @@ public class GroupCallApplication implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(handler(), "/webrtc");
+        registry.addHandler(callHandler(), "/webrtc");
     }
-
-//    @Bean
-//    public KurentoMonitor monitor() {
-//        return new KurentoMonitor();
-//    }
-//    // 스케줄러 Bean 추가
-//    @Bean
-//    public TaskScheduler taskScheduler() {
-//        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-//        scheduler.setPoolSize(2);
-//        return scheduler;
-//    }
 
     public static void main(String[] args) {
         SpringApplication.run(GroupCallApplication.class, args);
     }
-
 }

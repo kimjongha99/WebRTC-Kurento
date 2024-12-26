@@ -2,7 +2,12 @@ package com.example.groupcall;
 
 
 
+import jakarta.annotation.PostConstruct;
 import org.kurento.client.IceCandidate;
+import org.kurento.client.KurentoClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -12,37 +17,44 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 
-public class CallHandler extends TextWebSocketHandler {
+
+public class CallHandler extends TextWebSocketHandler  {
+    private static final Logger log = LoggerFactory.getLogger(CallHandler.class);
     private final Gson gson = new Gson();
 
     @Autowired
-    private RoomManager roomManager;
+    private KurentoClient kurentoClient;
 
-    @Autowired
-    private UserRegistry userRegistry;
+    @PostConstruct
+    public void init() {
+        Room.setKurentoClient(kurentoClient);
+        log.info("KurentoClient가 Room 클래스에 설정되었습니다.");
+    }
+
 
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         JsonObject jsonMessage = gson.fromJson(message.getPayload(), JsonObject.class);
-        UserSession user = userRegistry.getBySession(session);
+        User user = User.getBySession(session);
         String messageId = jsonMessage.get("id").getAsString();
+
+        log.debug("메시지 수신: {} (세션: {})", messageId, session.getId());
 
         switch (messageId) {
             case "joinRoom":
                 joinRoom(jsonMessage, session);
                 break;
             case "receiveVideoFrom":
-                String senderName = jsonMessage.get("sender").getAsString();
-                user.receiveVideoFrom(
-                        userRegistry.getByName(senderName),
-                        jsonMessage.get("sdpOffer").getAsString()
-                );
+                handleReceiveVideoFrom(jsonMessage, user);
                 break;
             case "leaveRoom":
                 leaveRoom(user);
                 break;
             case "onIceCandidate":
                 handleIceCandidate(jsonMessage, user);
+                break;
+            default:
+                log.warn("알 수 없는 메시지 ID: {}", messageId);
                 break;
         }
     }
@@ -51,20 +63,33 @@ public class CallHandler extends TextWebSocketHandler {
         String roomName = params.get("room").getAsString();
         String userName = params.get("name").getAsString();
 
-        Room room = roomManager.getRoom(roomName);
-        UserSession user = room.join(userName, session);
-        userRegistry.register(user);
+        log.info("사용자 {} 이(가) 방 {}에 참여 요청", userName, roomName);
+
+        Room room = Room.getRoom(roomName);
+        room.join(userName, session);
     }
 
-    private void leaveRoom(UserSession user) throws Exception {
-        Room room = roomManager.getRoom(user.getRoomName());
-        room.leave(user.getName());
-        if (room.getParticipants().isEmpty()) {
-            roomManager.removeRoom(room.getName());
+    private void handleReceiveVideoFrom(JsonObject jsonMessage, User user) throws Exception {
+        if (user != null) {
+            String senderName = jsonMessage.get("sender").getAsString();
+            User sender = User.getByName(senderName);
+            String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
+
+            user.receiveVideoFrom(sender, sdpOffer);
         }
     }
 
-    private void handleIceCandidate(JsonObject jsonMessage, UserSession user) {
+    private void leaveRoom(User user) throws Exception {
+        if (user != null) {
+            String roomName = user.getRoomName();
+            log.info("사용자 {} 이(가) 방 {}에서 나가기 요청", user.getName(), roomName);
+
+            Room room = Room.getRoom(roomName);
+            room.leave(user.getName());
+        }
+    }
+
+    private void handleIceCandidate(JsonObject jsonMessage, User user) {
         if (user != null) {
             JsonObject candidateJson = jsonMessage.get("candidate").getAsJsonObject();
             IceCandidate candidate = new IceCandidate(
@@ -78,9 +103,10 @@ public class CallHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        UserSession user = userRegistry.removeBySession(session);
+        log.debug("WebSocket 연결 종료: {}", session.getId());
+        User user = User.removeBySession(session);
         if (user != null) {
-            Room room = roomManager.getRoom(user.getRoomName());
+            Room room = Room.getRoom(user.getRoomName());
             room.leave(user.getName());
         }
     }

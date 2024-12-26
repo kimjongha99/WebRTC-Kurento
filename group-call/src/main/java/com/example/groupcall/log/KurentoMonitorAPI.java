@@ -1,9 +1,6 @@
 package com.example.groupcall.log;
 
 import com.example.groupcall.Room;
-import com.example.groupcall.RoomManager;
-import com.example.groupcall.UserRegistry;
-import com.example.groupcall.UserSession;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.JsonObject;
 import org.kurento.client.*;
@@ -16,16 +13,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.socket.WebSocketSession;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
-import java.util.Map;
-
-import static org.kurento.client.StatsType.session;
-
+import java.util.Collection;
 
 @RestController
 @RequestMapping("/kurento")
@@ -34,138 +24,100 @@ public class KurentoMonitorAPI {
 
     @Autowired
     private KurentoClient kurento;
-    @Autowired
-    private UserRegistry userRegistry; // WebSocket 세션과 UserSession 매핑을 위해 필요
 
-    @Autowired
-    private RoomManager roomManager;
+
 
     @GetMapping("/monitor/server")
-    public void monitorServer() {
+    public ResponseEntity<Object> monitorServer() {
         try {
             ServerManager serverManager = kurento.getServerManager();
-
+            JsonObject response = new JsonObject();
             // 서버 정보
             ServerInfo info = serverManager.getInfo();
-            log.info("=== Kurento 서버 정보 ===");
-            log.info("버전: {}", info.getVersion());
-            log.info("Capabilities: {}", info.getCapabilities());
+            response.addProperty("version", info.getVersion());
+            response.add("capabilities", new com.google.gson.JsonParser().parse(info.getCapabilities().toString()));
 
             // CPU 정보
-            int cpuCount = serverManager.getCpuCount();
-            float cpuUsage = serverManager.getUsedCpu(1000); // 1초 간격으로 측정
-            log.info("=== CPU 정보 ===");
-            log.info("CPU 코어 수: {}", cpuCount);
-            log.info("CPU 사용률: {}%", cpuUsage);
+            response.addProperty("cpuCount", serverManager.getCpuCount());
+            response.addProperty("cpuUsage", serverManager.getUsedCpu(1000));
 
             // 메모리 정보
-            long usedMemory = serverManager.getUsedMemory();
-            log.info("=== 메모리 정보 ===");
-            log.info("사용 중인 메모리: {} KiB", usedMemory);
+            response.addProperty("usedMemory", serverManager.getUsedMemory());
 
             // 파이프라인 정보
             List<MediaPipeline> pipelines = serverManager.getPipelines();
-            log.info("=== 파이프라인 정보 ===");
-            log.info("활성 파이프라인 수: {}", pipelines.size());
-            for (MediaPipeline pipeline : pipelines) {
-                log.info("파이프라인 ID: {}", pipeline.getId());
-            }
+            response.addProperty("activePipelines", pipelines.size());
 
             // 세션 정보
             List<String> sessions = serverManager.getSessions();
-            log.info("=== 세션 정보 ===");
-            log.info("활성 세션 수: {}", sessions.size());
-            sessions.forEach(session -> {
-                if (session != null && !session.isEmpty()) {
-                    log.info("유효한 세션 ID: {}", session);
-                    try {
-                        // 세션과 관련된 파이프라인 정보 조회
-                        JsonObject params = new JsonObject();
-                        params.addProperty("sessionId", session);
+            response.addProperty("activeSessions", sessions.size());
 
-                        // ServerManager를 통해 세션 상태 조회
-                        MediaPipeline pipeline = serverManager.getPipelines().stream()
-                                .filter(p -> session.equals(p.getId()))
-                                .findFirst()
-                                .orElse(null);
-
-                        if (pipeline != null) {
-                            log.info("- 파이프라인 상태: 활성");
-                            log.info("- 파이프라인 ID: {}", pipeline.getId());
-                        } else {
-                            log.info("- 제어/시스템 세션");
-                        }
-                    } catch (Exception e) {
-                        log.debug("세션 상세 정보 조회 실패: {}", e.getMessage());
-                    }
-                } else {
-                    log.info("제어 세션 (ID 없음)");
-                }
-            });
-
-
+            log.info("서버 모니터링 완료");
+            return ResponseEntity.ok(new ObjectMapper().readValue(response.toString(), Object.class));
         } catch (Exception e) {
             log.error("서버 모니터링 실패: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("서버 모니터링 실패: " + e.getMessage());
         }
     }
 
     @GetMapping("/monitor/user/session")
-    public void monitorUserSession() {
+    public ResponseEntity<Object> monitorUserSession() {
         try {
-            log.info("=== 세션 상세 정보 ===");
-            // 활성화된 모든 룸 조회
-            for (Room room : roomManager.getRooms()) {
-                log.info("=== 룸 [{}] 세션 정보 ===", room.getName());
+            JsonObject response = new JsonObject();
+            Collection<Room> rooms = Room.findRooms();
 
-                // 룸의 모든 참가자에 대해
-                for (UserSession userSession : room.getParticipants()) {
-                    WebSocketSession wsSession = userSession.getSession();
-                    String userName = userSession.getName();
-                    String wsSessionId = wsSession.getId();
+            rooms.forEach(room -> {
+                JsonObject roomInfo = new JsonObject();
+                room.getParticipants().forEach(user -> {
+                    JsonObject userInfo = new JsonObject();
+                    userInfo.addProperty("userName", user.getName());
+                    userInfo.addProperty("webSocketSessionId", user.getSession().getId());
+                    userInfo.addProperty("endpointId", user.getOutgoingWebRtcPeer().getId());
+                    roomInfo.add(user.getName(), userInfo);
+                });
+                response.add(room.getName(), roomInfo);
+            });
 
-                    log.info("참가자: {}", userName);
-                    log.info("- WebSocket 세션 ID: {}", wsSessionId);
-                    log.info("- Kurento 엔드포인트 ID: {}",
-                            userSession.getOutgoingWebRtcPeer().getId());
-                }
-            }
+            log.info("세션 모니터링 완료");
+            return ResponseEntity.ok(new ObjectMapper().readValue(response.toString(), Object.class));
         } catch (Exception e) {
-            log.error("서버 모니터링 실패: {}", e.getMessage(), e);
+            log.error("세션 모니터링 실패: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("세션 모니터링 실패: " + e.getMessage());
         }
     }
 
     @GetMapping("/monitor/room/{roomId}")
-    public void monitorRoom(@PathVariable String roomId) {
+    public ResponseEntity<Object> monitorRoom(@PathVariable String roomId) {
         try {
-            Room room = roomManager.getRoom(roomId);
+            Room room = Room.findRoom(roomId);
             if (room == null) {
-                log.error("Room not found: {}", roomId);
-                return;
+                return ResponseEntity.notFound().build();
             }
 
-            MediaPipeline pipeline = room.getPipeline();
-
-            log.info("=== 방 상세 정보 ===");
-            log.info("방 ID: {}", roomId);
-            log.info("파이프라인 ID: {}", pipeline.getId());
-            log.info("참가자 수: {}", room.getParticipants().size());
-
+            JsonObject response = room.getRoomStats();
+            log.info("방 {} 모니터링 완료", roomId);
+            return ResponseEntity.ok(new ObjectMapper().readValue(response.toString(), Object.class));
         } catch (Exception e) {
-            log.error("Room monitoring failed: {}", e.getMessage(), e);
+            log.error("방 모니터링 실패: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("방 모니터링 실패: " + e.getMessage());
         }
     }
 
     @GetMapping("/{roomName}/stats")
     public ResponseEntity<Object> getRoomStats(@PathVariable String roomName) {
         try {
-            JsonObject roomStats = roomManager.getRoomStats(roomName);
+            Room room = Room.findRoom(roomName);
+            if (room == null) {
+                return ResponseEntity.notFound().build();
+            }
 
-            // Gson JsonObject를 Jackson Object로 변환
-            ObjectMapper mapper = new ObjectMapper();
-            Object jsonObject = mapper.readValue(roomStats.toString(), Object.class);
-
-            return ResponseEntity.ok(jsonObject);
+            JsonObject roomStats = room.getRoomStats();
+            return ResponseEntity.ok(new ObjectMapper().readValue(roomStats.toString(), Object.class));
         } catch (Exception e) {
+            log.error("방 통계 조회 실패: {}", e.getMessage(), e);
             JsonObject errorResponse = new JsonObject();
             errorResponse.addProperty("error", "Failed to retrieve room stats");
             errorResponse.addProperty("message", e.getMessage());

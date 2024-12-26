@@ -20,34 +20,56 @@ import org.springframework.web.socket.WebSocketSession;
 
 import com.google.gson.JsonObject;
 
+public class User {
+    private static final Logger log = LoggerFactory.getLogger(User.class);
 
-public class UserSession {
-    private static final Logger log = LoggerFactory.getLogger(UserSession.class);
+    // Static user registry (formerly UserRegistry)
+    private static final ConcurrentHashMap<String, User> usersByName = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, User> usersBySessionId = new ConcurrentHashMap<>();
 
-
+    // User instance fields
     private final String name;
     private final String roomName;
     private final WebSocketSession session;
     private final WebRtcEndpoint outgoingMedia;
     private final ConcurrentHashMap<String, WebRtcEndpoint> incomingMedia = new ConcurrentHashMap<>();
 
-    public UserSession(String name, String roomName, WebSocketSession session, MediaPipeline pipeline) {
+    // Static methods for user registry
+    public static void register(User user) {
+        usersByName.put(user.getName(), user);
+        usersBySessionId.put(user.getSession().getId(), user);
+    }
+
+    public static User getByName(String name) {
+        return usersByName.get(name);
+    }
+
+    public static User getBySession(WebSocketSession session) {
+        return usersBySessionId.get(session.getId());
+    }
+
+    public static User removeBySession(WebSocketSession session) {
+        User user = getBySession(session);
+        if (user != null) {
+            usersByName.remove(user.getName());
+            usersBySessionId.remove(session.getId());
+        }
+        return user;
+    }
+
+    public User(String name, String roomName, WebSocketSession session, MediaPipeline pipeline) {
         this.name = name;
         this.roomName = roomName;
         this.session = session;
-        // WebRTC Endpoint 생성 로깅
+
         log.info("WebRTC 엔드포인트 생성 - 사용자: {}, 룸: {}", name, roomName);
         this.outgoingMedia = new WebRtcEndpoint.Builder(pipeline).build();
         log.info("outgoing WebRTC 엔드포인트 생성됨 - 사용자: {}, 룸: {}, EndpointId: {}",
                 name, roomName, outgoingMedia.getId());
 
-
-
-
         this.outgoingMedia.addIceCandidateFoundListener(event -> {
             log.debug("ICE 후보 발견 - 사용자: {}, 룸: {}, 후보: {}",
                     name, roomName, event.getCandidate());
-
 
             JsonObject response = new JsonObject();
             response.addProperty("id", "iceCandidate");
@@ -55,9 +77,12 @@ public class UserSession {
             response.add("candidate", JsonUtils.toJsonObject(event.getCandidate()));
             sendMessage(response);
         });
+
+        // Register the user in the static registry
+        register(this);
     }
 
-    public void receiveVideoFrom(UserSession sender, String sdpOffer) throws Exception {
+    public void receiveVideoFrom(User sender, String sdpOffer) throws Exception {
         String senderName = sender.getName();
         WebRtcEndpoint incoming = getOrCreateWebRtcEndpoint(sender);
         String sdpAnswer = incoming.processOffer(sdpOffer);
@@ -71,7 +96,7 @@ public class UserSession {
         incoming.gatherCandidates();
     }
 
-    private WebRtcEndpoint getOrCreateWebRtcEndpoint(UserSession sender) {
+    private WebRtcEndpoint getOrCreateWebRtcEndpoint(User sender) {
         String senderName = sender.getName();
 
         if (senderName.equals(this.name)) {
@@ -86,8 +111,7 @@ public class UserSession {
         return incoming;
     }
 
-    private WebRtcEndpoint createNewWebRtcEndpoint(UserSession sender) {
-
+    private WebRtcEndpoint createNewWebRtcEndpoint(User sender) {
         log.info("수신 WebRTC 엔드포인트 생성 - 보낸 사람: {}, 받는 사람: {}, 방: {}",
                 sender.getName(), this.name, this.roomName);
 
@@ -114,7 +138,6 @@ public class UserSession {
         if (incoming != null) {
             log.info("수신 WebRTC 엔드포인트 해제 - 보낸 사람: {}, 받는 사람: {}, 방: {}, EndpointId: {}",
                     senderName, this.name, this.roomName, incoming.getId());
-
             incoming.release();
         }
     }
@@ -136,7 +159,7 @@ public class UserSession {
                 session.sendMessage(new TextMessage(message.toString()));
             }
         } catch (Exception e) {
-            // 오류 처리
+            log.error("Error sending message", e);
         }
     }
 
@@ -155,6 +178,10 @@ public class UserSession {
         log.info("발신 WebRTC 엔드포인트 해제 - 사용자: {}, Room: {}, EndpointId: {}",
                 name, roomName, outgoingMedia.getId());
         outgoingMedia.release();
+
+        // Remove from registry
+        usersByName.remove(this.name);
+        usersBySessionId.remove(this.session.getId());
 
         log.info("사용자: {}, 방: {}에 대한 모든 리소스를 닫았습니다.", name, roomName);
     }

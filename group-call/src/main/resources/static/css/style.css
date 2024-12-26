@@ -1,0 +1,70 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif;
+    background-color: #f0f2f5;
+    height: 100%;
+}
+#container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+#wrapper {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+    width: 100%;
+    max-width: 400px;
+}
+#join, #room {
+    padding: 2rem;
+}
+h1, h2 {
+    color: #1a73e8;
+    margin-top: 0;
+}
+form {
+    display: flex;
+    flex-direction: column;
+}
+input[type="text"] {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 16px;
+}
+input[type="submit"], #button-leave {
+    background-color: #1a73e8;
+    color: white;
+    border: none;
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+input[type="submit"]:hover, #button-leave:hover {
+    background-color: #1765cc;
+}
+#participants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.participant {
+    background-color: #f1f3f4;
+    border-radius: 4px;
+    padding: 1rem;
+    text-align: center;
+}
+#button-leave {
+    background-color: #ea4335;
+}
+#button-leave:hover {
+    background-color: #d33828;
+}

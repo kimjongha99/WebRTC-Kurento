@@ -28,7 +28,6 @@ function Participant(name) {
 
     this.offerToReceiveVideo = function(error, offerSdp) {
         if (error) return;
-
         sendMessage({
             id: "receiveVideoFrom",
             sender: name,

@@ -13,11 +13,11 @@ import com.google.gson.JsonObject;
 public class Room {
     private static final Logger log = LoggerFactory.getLogger(Room.class);
 
-    // Static room management (formerly RoomManager)
+    // 정적 룸 관리(이전의 RoomManager)
     private static final ConcurrentHashMap<String, Room> rooms = new ConcurrentHashMap<>();
     private static KurentoClient kurento;
 
-    // Room instance fields
+    // 룸 인스턴스 필드
     private final String name;
     private final MediaPipeline pipeline;
     private final ConcurrentHashMap<String, User> participants = new ConcurrentHashMap<>();

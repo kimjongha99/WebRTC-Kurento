@@ -6,6 +6,9 @@
     <script src="/js/webRtcPeer.js"></script>
     <script src="/js/conferenceroom.js"></script>
     <script src="/js/participant.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css" />
+
 </head>
 <body>
 <div id="container">
@@ -13,26 +16,18 @@
         <div id="join" class="animate join">
             <h1>Join a Room</h1>
             <form onsubmit="register(); return false;" accept-charset="UTF-8">
-                <p>
-                    <input type="text" name="name" value="" id="name"
-                           placeholder="Username" required>
-                </p>
-                <p>
-                    <input type="text" name="room" value="" id="roomName"
-                           placeholder="Room" required>
-                </p>
-                <p class="submit">
-                    <input type="submit" name="commit" value="Join!">
-                </p>
+                <input type="text" name="name" id="name" placeholder="Username" required>
+                <input type="text" name="room" id="roomName" placeholder="Room" required>
+                <input type="submit" name="commit" value="Join!">
             </form>
         </div>
         <div id="room" style="display: none;">
             <h2 id="room-header"></h2>
             <div id="participants"></div>
-            <input type="button" id="button-leave" onmouseup="leaveRoom();"
-                   value="Leave room">
+            <button id="button-leave" onclick="leaveRoom();">Leave room</button>
         </div>
     </div>
 </div>
+
 </body>
 </html>

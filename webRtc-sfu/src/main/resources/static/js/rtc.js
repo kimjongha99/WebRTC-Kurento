@@ -2,6 +2,7 @@ let ws = null;
 let currentUser = null;
 let currentRoom = null;
 let localStream = null;
+let participants = {};
 
 async function joinRoom() {
     const userName = document.getElementById('userName').value;
@@ -67,66 +68,137 @@ function handleMessage(message) {
         case 'participantLeft':
             onParticipantLeft(message.leftUserId);
             break;
+        case 'receiveVideoAnswer':
+            onReceiveVideoAnswer(message);
+            break;
+        case 'iceCandidate':
+            onIceCandidate(message);
+            break;
     }
 }
 
-function onExistingParticipants(userList) {
-    // UI 전환
-    document.getElementById('roomTitle').textContent = currentRoom;
-    document.getElementById('userTitle').textContent = currentUser;
-    hideLoginContainer();
-    showVideoRoom();
+function onIceCandidate(message) {
+    const participant = participants[message.name];
+    if (participant) {
+        participant.addIceCandidate(message.candidate)
+            .catch(error => console.error('Error adding ICE candidate:', error));
+    }
+}
 
-    // 로컬 비디오 추가
-    addVideoElement(currentUser, true);
+function onReceiveVideoAnswer(message) {
+    console.log('Received video answer from:', message.userId);
+    const webRtcPeer = participants[message.userId];
 
-    // 기존 참가자들의 비디오 컨테이너 추가
-    userList.forEach(userName => {
-        if (userName !== currentUser) {
-            addVideoElement(userName, false);
+    if (webRtcPeer) {
+        webRtcPeer.processAnswer(message.sdpAnswer)
+            .catch(error => console.error('Error processing answer:', error));
+    }
+}
+
+function onExistingParticipants(userIds) {
+    console.log('Existing participants:', userIds);
+
+    // 로컬 비디오 설정
+    const videoContainer = document.getElementById('videoContainer');
+    const localVideo = document.createElement('video');
+    localVideo.id = 'local-video';
+    localVideo.autoplay = true;
+    localVideo.playsInline = true;
+    videoContainer.appendChild(localVideo);
+
+    // 로컬 WebRTC Peer 생성
+    const localPeer = new WebRTCPeer({
+        localVideo: localVideo,
+        onicecandidate: candidate => {
+            sendMessage({
+                id: 'onIceCandidate',
+                candidate: candidate,
+                name: currentUser
+            });
         }
     });
+
+    participants[currentUser] = localPeer;
+
+    // 로컬 peer에 대한 offer 생성
+    localPeer.generateOffer()
+        .then(sdpOffer => {
+            console.log('Sending local video offer');
+            sendMessage({
+                id: 'receiveVideoOffer',
+                sender: currentUser,
+                sdpOffer: sdpOffer
+            });
+        })
+        .catch(error => console.error('Error generating local offer:', error));
+
+    // 기존 참가자들에 대한 WebRTC 연결 설정
+    userIds.forEach(userId => {
+        if (userId !== currentUser) {
+            receiveVideo(userId);
+        }
+    });
+
+    hideLoginContainer();
+    showVideoRoom();
 }
 
-function onNewParticipant(userName) {
-    console.log('New participant:', userName);
-    addVideoElement(userName, false);
-}
+function receiveVideo(userId) {
+    console.log('Receiving video from:', userId);
 
-function onParticipantLeft(userName) {
-    console.log('Participant left:', userName);
-    removeVideoElement(userName);
-}
-
-function addVideoElement(userName, isLocal) {
+    // 원격 비디오 엘리먼트 생성
     const videoContainer = document.getElementById('videoContainer');
+    const remoteVideo = document.createElement('video');
+    remoteVideo.id = `video-${userId}`;
+    remoteVideo.autoplay = true;
+    remoteVideo.playsInline = true;
+    videoContainer.appendChild(remoteVideo);
 
-    const videoBox = document.createElement('div');
-    videoBox.className = 'video-box';
-    videoBox.id = `video-box-${userName}`;
+    // WebRTC Peer 생성
+    const webRtcPeer = new WebRTCPeer({
+        remoteVideo: remoteVideo,
+        onicecandidate: candidate => {
+            sendMessage({
+                id: 'onIceCandidate',
+                candidate: candidate,
+                name: userId
+            });
+        }
+    });
 
-    const video = document.createElement('video');
-    video.id = `video-${userName}`;
-    video.autoplay = true;
-    video.playsInline = true;
-    if (isLocal) {
-        video.muted = true;
-        video.srcObject = localStream;
-    }
+    participants[userId] = webRtcPeer;
 
-    const label = document.createElement('div');
-    label.className = 'video-label';
-    label.textContent = userName + (isLocal ? ' (You)' : '');
-
-    videoBox.appendChild(video);
-    videoBox.appendChild(label);
-    videoContainer.appendChild(videoBox);
+    // Offer 생성 및 전송
+    webRtcPeer.generateOffer()
+        .then(sdpOffer => {
+            console.log('Sending video offer to:', userId);
+            sendMessage({
+                id: 'receiveVideoOffer',
+                sender: currentUser,
+                sdpOffer: sdpOffer
+            });
+        })
+        .catch(error => console.error('Error generating offer:', error));
 }
 
-function removeVideoElement(userName) {
-    const videoBox = document.getElementById(`video-box-${userName}`);
-    if (videoBox) {
-        videoBox.remove();
+function onNewParticipant(userId) {
+    console.log('New participant arrived:', userId);
+    receiveVideo(userId);
+}
+
+function onParticipantLeft(userId) {
+    console.log('Participant left:', userId);
+    if (participants[userId]) {
+        participants[userId].dispose();
+        delete participants[userId];
+    }
+    removeVideoElement(userId);
+}
+
+function removeVideoElement(userId) {
+    const video = document.getElementById(`video-${userId}`);
+    if (video) {
+        video.parentElement.removeChild(video);
     }
 }
 
@@ -135,6 +207,14 @@ function cleanup() {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
+
+    Object.values(participants).forEach(participant => {
+        if (participant) {
+            participant.dispose();
+        }
+    });
+    participants = {};
+
     showLoginContainer();
     hideVideoRoom();
     document.getElementById('videoContainer').innerHTML = '';

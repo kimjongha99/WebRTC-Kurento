@@ -3,6 +3,8 @@ package com.example.webrtcsfu;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import org.kurento.client.IceCandidate;
+import org.kurento.jsonrpc.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -62,6 +64,16 @@ public class MessageSender {
         } catch (IOException e) {
             log.error("Error sending participant left message to user: " + userName, e);
         }
+    }
+    /**
+     * ICE Candidate 메시지 전송 메서드
+     */
+    public void sendIceCandidate(WebSocketSession session, String userName, IceCandidate candidate) throws IOException {
+        JsonObject response = new JsonObject();
+        response.addProperty("id", "iceCandidate");
+        response.addProperty("name", userName);
+        response.add("candidate", JsonUtils.toJsonObject(candidate));
+        sendMessage(session, userName, response);
     }
 
 

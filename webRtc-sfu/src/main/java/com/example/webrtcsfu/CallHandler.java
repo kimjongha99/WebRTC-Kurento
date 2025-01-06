@@ -3,6 +3,7 @@ package com.example.webrtcsfu;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import org.kurento.client.IceCandidate;
 import org.kurento.client.WebRtcEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,8 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+
+import java.io.IOException;
 
 public class CallHandler extends TextWebSocketHandler  {
     private static final Logger log = LoggerFactory.getLogger(CallHandler.class);
@@ -23,6 +26,8 @@ public class CallHandler extends TextWebSocketHandler  {
     private UserRegister userRegister;
 
 
+    @Autowired
+    private MessageSender messageSender;  // MessageSender 주입
 
 
     @Override
@@ -51,7 +56,7 @@ public class CallHandler extends TextWebSocketHandler  {
                 log.info("새로운 사용자 생성: {}", userName);
 
                 WebRtcEndpoint outgoingMedia = new WebRtcEndpoint.Builder(room.getPipeline()).build();
-                UserSession user = new UserSession(userName, session, roomName, outgoingMedia);
+                UserSession user = new UserSession(userName, session, roomName, outgoingMedia, messageSender);
                 userRegister.register(user);
                 // Room의 addParticipant 메서드를 사용하여 유저 추가 //Room클래스에서 해당방 유저 상태 관리
                 room.addParticipant(userName, user);
@@ -66,7 +71,16 @@ public class CallHandler extends TextWebSocketHandler  {
                 userRegister.getBySession(session.getId());
             }
         }
-        }
+
+
+
+
+
+
+    }
+        
+
+
 
 
     @Override
@@ -98,3 +112,5 @@ public class CallHandler extends TextWebSocketHandler  {
     }
 
 }
+
+

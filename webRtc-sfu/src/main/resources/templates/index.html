@@ -1,101 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>WebRTC Demo</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        .container {
-            max-width: 600px;
-            margin: 50px auto;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+        .participant {
+            width: 320px;
+            margin: 10px;
+            display: inline-block;
+            vertical-align: top;
         }
-        .form-group {
-            margin-bottom: 15px;
+        .participant.main {
+            width: 640px;
         }
-        .form-group label {
+        .participant video {
+            width: 100%;
+            background: #000;
+        }
+        .participant span {
             display: block;
-            margin-bottom: 5px;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .hidden {
-            display: none;
-        }
-        .video-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin: 20px;
-        }
-        .video-box {
-            position: relative;
-            width: 100%;
-            padding-top: 75%; /* 4:3 비율 */
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-        }
-        .video-box video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 8px;
-        }
-        .video-label {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
+            text-align: center;
+            margin-top: 5px;
         }
     </style>
+    <script src="/js/participant.js"></script>
+    <script src="/js/conferenceroom.js"></script>
+    <script src="/js/kurento-utils.js"></script>
 </head>
 <body>
-<div id="loginContainer" class="container">
-    <h2>WebRTC Demo</h2>
-    <div class="form-group">
-        <label for="userName">User Name:</label>
-        <input type="text" id="userName" placeholder="Enter your name">
+<div id="container">
+    <div id="wrapper">
+        <div id="join" class="animate join">
+            <h1>Join a Room</h1>
+            <form onsubmit="register(); return false;" accept-charset="UTF-8">
+                <p>
+                    <input type="text" name="name" value="" id="name"
+                           placeholder="Username" required>
+                </p>
+                <p>
+                    <input type="text" name="room" value="" id="roomName"
+                           placeholder="Room" required>
+                </p>
+                <p class="submit">
+                    <input type="submit" name="commit" value="Join!">
+                </p>
+            </form>
+        </div>
+        <div id="room" style="display: none;">
+            <h2 id="room-header"></h2>
+            <div id="participants"></div>
+            <input type="button" id="button-leave" onmouseup="leaveRoom();"
+                   value="Leave room">
+        </div>
     </div>
-    <div class="form-group">
-        <label for="roomName">Room Name:</label>
-        <input type="text" id="roomName" placeholder="Enter room name">
-    </div>
-    <button onclick="joinRoom()">Join Room</button>
 </div>
-
-<div id="videoRoom" class="hidden">
-    <div class="container">
-        <h2>Room: <span id="roomTitle"></span></h2>
-        <p>Connected as: <span id="userTitle"></span></p>
-        <button onclick="leaveRoom()">Leave Room</button>
-    </div>
-    <div id="videoContainer" class="video-container">
-        <!-- 비디오 요소들이 여기에 동적으로 추가됨 -->
-    </div>
-</div>
-
-<script src="js/rtc.js"></script>
-<script src="/js/webRtcPeer.js"></script>
-
 </body>
 </html>

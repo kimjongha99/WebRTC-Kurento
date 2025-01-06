@@ -32,7 +32,7 @@ public class MessageSender {
     public void sendNewParticipantArrived(WebSocketSession session, String userName, String newUserId) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "newParticipantArrived");
-        message.addProperty("newUserId", newUserId);
+        message.addProperty("name", newUserId);
         try {
             sendMessage(session, userName, message);
         } catch (IOException e) {

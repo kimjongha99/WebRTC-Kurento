@@ -1,5 +1,7 @@
 package com.example.webrtcsfu;
 
+import org.springframework.web.socket.WebSocketSession;
+
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -13,7 +15,7 @@ public class UserRegister {
     /**
      * 세션 ID로 사용자 조회
      */
-    public UserSession getBySession(String sessionId) {
+    public UserSession getBySession(WebSocketSession sessionId) {
         return usersBySessionId.get(sessionId);
     }
 

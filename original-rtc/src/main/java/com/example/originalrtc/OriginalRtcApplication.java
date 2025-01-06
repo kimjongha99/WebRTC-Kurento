@@ -41,7 +41,9 @@ public class OriginalRtcApplication implements WebSocketConfigurer {
 	}
 	@Override
 	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-		registry.addHandler(groupCallHandler(), "/webrtc");
+		registry.addHandler(groupCallHandler(), "/webrtc")
+		.setAllowedOrigins("*"); // 모든 도메인 허용 (테스트용)
+
 	}
 
 	public static void main(String[] args) {

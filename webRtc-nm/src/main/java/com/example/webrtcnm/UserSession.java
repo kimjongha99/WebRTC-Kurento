@@ -28,11 +28,14 @@ public class UserSession implements Closeable {
     private final WebRtcEndpoint outgoingMedia;
     private final ConcurrentHashMap<String, WebRtcEndpoint> incomingMedia = new ConcurrentHashMap<>();
 
+
+
     public UserSession(String name, String roomName, WebSocketSession session, MediaPipeline pipeline) {
         this.name = name;
         this.session = session;
         this.roomName = roomName;
         this.outgoingMedia = new WebRtcEndpoint.Builder(pipeline).build();
+
         this.outgoingMedia.addIceCandidateFoundListener(event -> {
             JsonObject response = new JsonObject();
             response.addProperty("id", "iceCandidate");

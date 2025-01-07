@@ -38,6 +38,7 @@ public class Room {
         this.pipeline = pipeline;
         this.messageSender = messageSender;
     }
+
     public UserSession join(String userName, WebSocketSession session) throws IOException {
         UserSession participant = new UserSession(userName, this.roomName, session, this.pipeline,messageSender);
         notifyNewParticipantToRoom(participant);

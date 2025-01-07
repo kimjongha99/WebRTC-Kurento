@@ -26,11 +26,6 @@ public class CallHandler extends TextWebSocketHandler {
     @Autowired
     private UserRegister userRegister;
 
-
-    @Autowired
-    private MessageSender messageSender;  // MessageSender 주입
-
-
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         JsonObject jsonMessage = gson.fromJson(message.getPayload(), JsonObject.class);
@@ -45,11 +40,7 @@ public class CallHandler extends TextWebSocketHandler {
                 String senderName = jsonMessage.get("sender").getAsString();
                 UserSession sender = userRegister.getByName(senderName);
                 String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
-
-
                 UserSession sdpOfferUser = userRegister.getBySession(session);
-
-
                 sdpOfferUser.receiveVideoFrom(sender, sdpOffer);
                 break;
             case "onIceCandidate":
@@ -61,6 +52,9 @@ public class CallHandler extends TextWebSocketHandler {
                             candidate.get("sdpMid").getAsString(), candidate.get("sdpMLineIndex").getAsInt());
                     icecandidateUser.addCandidate(cand, jsonMessage.get("name").getAsString());
                 }
+
+
+
         }
 
 

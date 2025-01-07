@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class UserSession implements Closeable  {
     private static final Logger log = LoggerFactory.getLogger(UserSession.class);
 
+    //
+
     private final MessageSender messageSender;  // MessageSender 추가
 
     // 유저 이름

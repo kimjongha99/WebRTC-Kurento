@@ -1,31 +1,10 @@
-<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        .participant {
-            width: 320px;
-            margin: 10px;
-            display: inline-block;
-            vertical-align: top;
-        }
-        .participant.main {
-            width: 640px;
-        }
-        .participant video {
-            width: 100%;
-            background: #000;
-        }
-        .participant span {
-            display: block;
-            text-align: center;
-            margin-top: 5px;
-        }
-    </style>
-    <script src="/js/participant.js"></script>
-    <script src="/js/conferenceroom.js"></script>
-    <script src="/js/kurento-utils.js"></script>
+    <link rel="stylesheet" href="/style.css?v=1.1" type="text/css" media="screen">
+    <script src="/js/conferenceroom.js?v=1.1"></script>
+    <script src="/js/participant.js?v=1.1"></script>
+    <script src="/js/kurento-utils.js?v=1.1"></script>
 </head>
 <body>
 <div id="container">
@@ -34,12 +13,10 @@
             <h1>Join a Room</h1>
             <form onsubmit="register(); return false;" accept-charset="UTF-8">
                 <p>
-                    <input type="text" name="name" value="" id="name"
-                           placeholder="Username" required>
+                    <input type="text" id="userId" placeholder="사용자 ID"> <!-- 타입을 text로 변경 -->
                 </p>
                 <p>
-                    <input type="text" name="room" value="" id="roomName"
-                           placeholder="Room" required>
+                    <input type="text" id="roomId" placeholder="방 ID"> <!-- 타입을 text로 변경 -->
                 </p>
                 <p class="submit">
                     <input type="submit" name="commit" value="Join!">

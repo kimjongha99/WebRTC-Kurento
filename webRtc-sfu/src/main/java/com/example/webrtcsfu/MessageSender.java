@@ -32,7 +32,7 @@ public class MessageSender {
     public void sendNewParticipantArrived(UserSession participant, String newParticipantName) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "newParticipantArrived");
-        message.addProperty("name", newParticipantName);
+        message.addProperty("newUserId", newParticipantName);
         try {
             sendMessage(participant.getSession(), participant.getName(), message);
         } catch (IOException e) {
@@ -46,7 +46,7 @@ public class MessageSender {
     public void sendExistingParticipants(UserSession participant, JsonArray attendees) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "existingParticipants");
-        message.add("data", attendees);
+        message.add("attendees", attendees);
         try {
             sendMessage(participant.getSession(), participant.getName(), message);
         } catch (IOException e) {
@@ -58,7 +58,7 @@ public class MessageSender {
     public void sendParticipantLeft(WebSocketSession session, String userName, String leftUserId) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "participantLeft");
-        message.addProperty("name", leftUserId);
+        message.addProperty("leftUserId", leftUserId);
         try {
             sendMessage(session, userName, message);
         } catch (IOException e) {
@@ -70,8 +70,8 @@ public class MessageSender {
      */
     public void sendIceCandidate(WebSocketSession session, String userName, IceCandidate candidate) throws IOException {
         JsonObject response = new JsonObject();
-        response.addProperty("id", "iceCandidate");
-        response.addProperty("name", userName);
+        response.addProperty("id", "receiveIceCandidate");
+        response.addProperty("receiverId", userName);
         response.add("candidate", JsonUtils.toJsonObject(candidate));
         sendMessage(session, userName, response);
     }
@@ -81,7 +81,7 @@ public class MessageSender {
     public void sendVideoAnswer(UserSession participant, String senderName, String sdpAnswer) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "receiveVideoAnswer");
-        message.addProperty("name", senderName);
+        message.addProperty("userId", senderName);
         message.addProperty("sdpAnswer", sdpAnswer);
 
         try {

@@ -1,6 +1,6 @@
 var ws = new WebSocket('ws://' + location.host + '/webrtc');
 var participants = {};
-var name;
+var userId;
 let screenShareRtcPeer; // 발표자의 화면 공유용
 let screenShareViewerRtcPeer; // 시청자의 화면 공유 시청용
 
@@ -25,13 +25,27 @@ ws.onmessage = function(message) {
         case 'receiveVideoAnswer':
             receiveVideoResponse(parsedMessage);
             break;
-        case 'iceCandidate':
-            participants[parsedMessage.name].rtcPeer.addIceCandidate(parsedMessage.candidate, function (error) {
-                if (error) {
-                    console.error("Error adding candidate: " + error);
-                    return;
+        case 'receiveIceCandidate':
+            participants[parsedMessage.receiverId].rtcPeer.addIceCandidate(
+                parsedMessage.candidate,
+                function (error) {
+                    if (error) {
+                        console.error("ICE 후보 추가 중 오류:", error);
+                        return;
+                    }
                 }
-            });
+            );
+            break;
+        case 'sendIceCandidate':  // 추가된 부분
+            participants[parsedMessage.senderId].rtcPeer.addIceCandidate(
+                parsedMessage.candidate,
+                function (error) {
+                    if (error) {
+                        console.error("ICE 후보 추가 중 오류:", error);
+                        return;
+                    }
+                }
+            );
             break;
         case 'screenShareStarted':
             handleScreenShareStarted(parsedMessage);
@@ -50,46 +64,81 @@ ws.onmessage = function(message) {
     }
 }
 
-function register() {
-    name = document.getElementById('name').value;
-    var room = document.getElementById('roomName').value;
 
-    document.getElementById('room-header').innerText = 'ROOM ' + room;
+function onNewParticipant(request) {
+    console.log('새로운 참가자 도착:', request.newUserId);
+
+    // 새 참가자의 비디오 스트림을 받기 위한 WebRTC 연결 설정
+    receiveVideo(request.newUserId);
+}
+
+function receiveVideoResponse(result) {
+    if (!participants[result.userId]) {
+        console.error("SDP 응답 처리 중 참가자를 찾을 수 없습니다:", result.userId);
+        return;
+    }
+
+    participants[result.userId].rtcPeer.processAnswer(result.sdpAnswer, function (error) {
+        if (error) {
+            console.error("SDP 응답 처리 중 오류:", error);
+            return;
+        }
+        console.log("SDP 응답 처리 완료:", result.userId);
+    });
+}
+
+function register() {
+    userId = document.getElementById('userId').value; // String으로 사용
+    var roomId = document.getElementById('roomId').value; // String으로 사용
+
+    document.getElementById('room-header').innerText = '방 ' + roomId;
     document.getElementById('join').style.display = 'none';
     document.getElementById('room').style.display = 'block';
 
     var message = {
-        id : 'joinRoom',
-        name : name,
-        room : room,
-    }
+        id: 'joinRoom',
+        userId: userId,
+        roomId: roomId
+    };
     sendMessage(message);
 }
 
-function onNewParticipant(request) {
-    receiveVideo(request.name);
-}
+function receiveVideo(senderId) {
+    console.log('Receiving video from ' + senderId);
+    var participant = new Participant(senderId);
+    participants[senderId] = participant;
+    var video = participant.getVideoElement();
 
-function receiveVideoResponse(result) {
-    participants[result.name].rtcPeer.processAnswer(result.sdpAnswer, function (error) {
-        if (error) return console.error(error);
-    });
+    var options = {
+        remoteVideo: video,
+        onicecandidate: participant.onIceCandidate.bind(participant),
+        onconnectionstatechange: (e) => {console.log(e)},
+    }
+
+    participant.rtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerRecvonly(options,
+        function (error) {
+            if (error) {
+                console.error("WebRTC 피어 생성 중 오류:", error);
+                return;
+            }
+            this.generateOffer(participant.offerToReceiveVideo.bind(participant));
+        });
 }
 
 function onExistingParticipants(msg) {
     var constraints = {
-        audio : true,
-        video : {
-            mandatory : {
-                maxWidth : 320,
-                maxFrameRate : 15,
-                minFrameRate : 15
+        audio: true,
+        video: {
+            mandatory: {
+                maxWidth: 320,
+                maxFrameRate: 15,
+                minFrameRate: 15
             }
         }
     };
-    console.log(name + " registered in room " + room);
-    var participant = new Participant(name);
-    participants[name] = participant;
+
+    var participant = new Participant(userId);
+    participants[userId] = participant;
     var video = participant.getVideoElement();
 
     var options = {
@@ -99,33 +148,40 @@ function onExistingParticipants(msg) {
     }
     participant.rtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerSendonly(options,
         function (error) {
-            if(error) {
-                return console.error(error);
-            }
+            if (error) console.error("WebRTC 연결 생성 중 오류:", error);
             this.generateOffer(participant.offerToReceiveVideo.bind(participant));
         });
 
-    msg.data.forEach(receiveVideo);
+    msg.attendees.forEach(receiveVideo);
 }
 
-function receiveVideo(sender) {
-    var participant = new Participant(sender);
-    participants[sender] = participant;
-    var video = participant.getVideoElement();
+function leaveRoom() {
+    sendMessage({ id: 'leaveRoom' });
 
-    var options = {
-        remoteVideo: video,
-        onicecandidate: participant.onIceCandidate.bind(participant)
+    for (var key in participants) {
+        participants[key].dispose();
     }
 
-    participant.rtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerRecvonly(options,
-        function (error) {
-            if(error) {
-                return console.error(error);
-            }
-            this.generateOffer(participant.offerToReceiveVideo.bind(participant));
-        });
+    document.getElementById('join').style.display = 'block';
+    document.getElementById('room').style.display = 'none';
+
+    ws.close();
 }
+
+function onParticipantLeft(request) {
+    var participant = participants[request.leftUserId];
+    participant.dispose();
+    delete participants[request.leftUserId];
+}
+
+function sendMessage(message) {
+    var jsonMessage = JSON.stringify(message);
+    console.info('송신된 JSON 메시지:', jsonMessage);
+    ws.send(jsonMessage);
+}
+
+
+
 
 function startScreenShare() {
     if (screenShareRtcPeer) {
@@ -267,32 +323,4 @@ function receiveScreenShare(presenterName) {
                 sendMessage(message);
             });
         });
-}
-
-function leaveRoom() {
-    sendMessage({
-        id : 'leaveRoom'
-    });
-
-    for (var key in participants) {
-        participants[key].dispose();
-    }
-
-    document.getElementById('join').style.display = 'block';
-    document.getElementById('room').style.display = 'none';
-
-    ws.close();
-}
-
-function onParticipantLeft(request) {
-    console.log('Participant ' + request.name + ' left');
-    var participant = participants[request.name];
-    participant.dispose();
-    delete participants[request.name];
-}
-
-function sendMessage(message) {
-    var jsonMessage = JSON.stringify(message);
-    console.log('Sending message: ' + jsonMessage);
-    ws.send(jsonMessage);
 }

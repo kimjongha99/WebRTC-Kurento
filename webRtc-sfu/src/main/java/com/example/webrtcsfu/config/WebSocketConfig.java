@@ -43,6 +43,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(callHandler(), "/webrtc");
+        registry.addHandler(callHandler(), "/webrtc")
+                .setAllowedOriginPatterns("*");    // 모든 origin 패턴 허용
+
     }
 }

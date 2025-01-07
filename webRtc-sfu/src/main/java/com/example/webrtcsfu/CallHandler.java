@@ -28,29 +28,33 @@ public class CallHandler extends TextWebSocketHandler {
 
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        JsonObject jsonMessage = gson.fromJson(message.getPayload(), JsonObject.class);
+        String rawMessage = message.getPayload();
+        log.info("Raw WebSocket message received: {}", rawMessage);
 
+        JsonObject jsonMessage = gson.fromJson(rawMessage, JsonObject.class);
+        log.info("Parsed JSON message: {}", jsonMessage);
+        log.info("Available fields in message: {}", jsonMessage.keySet());
 
         switch (jsonMessage.get("id").getAsString()) {
 
             case "joinRoom":
                 joinRoom(jsonMessage, session);
                 break;
-            case "receiveVideoFrom":
-                String senderName = jsonMessage.get("sender").getAsString();
+            case "receiveVideoOffer":
+                String senderName = jsonMessage.get("senderId").getAsString();
                 UserSession sender = userRegister.getByName(senderName);
                 String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
                 UserSession sdpOfferUser = userRegister.getBySession(session);
                 sdpOfferUser.receiveVideoFrom(sender, sdpOffer);
                 break;
-            case "onIceCandidate":
+            case "sendIceCandidate":
                 JsonObject candidate = jsonMessage.get("candidate").getAsJsonObject();
                 UserSession icecandidateUser = userRegister.getBySession(session);
 
                 if (icecandidateUser != null) {
                     IceCandidate cand = new IceCandidate(candidate.get("candidate").getAsString(),
                             candidate.get("sdpMid").getAsString(), candidate.get("sdpMLineIndex").getAsInt());
-                    icecandidateUser.addCandidate(cand, jsonMessage.get("name").getAsString());
+                    icecandidateUser.addCandidate(cand, jsonMessage.get("senderId").getAsString());
                 }
                 break;
             case "startScreenShare":
@@ -75,8 +79,8 @@ public class CallHandler extends TextWebSocketHandler {
 
 
     private void joinRoom(JsonObject params, WebSocketSession session) throws IOException {
-        String roomName = params.get("room").getAsString();
-        String name = params.get("name").getAsString();
+        String roomName = params.get("roomId").getAsString();
+        String name = params.get("userId").getAsString();
 
         Room room;
         if (!roomRegister.getRoom(roomName)) {

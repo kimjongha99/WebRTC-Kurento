@@ -90,5 +90,41 @@ public class MessageSender {
             log.error("Error sending video answer message to user: " + participant.getName(), e);
         }
     }
+    public void sendScreenShareStarted(UserSession viewer, String presenterName) {
+        JsonObject message = new JsonObject();
+        message.addProperty("id", "screenShareStarted");
+        message.addProperty("presenterName", presenterName);
+        try {
+            sendMessage(viewer.getSession(), viewer.getName(), message);
+        } catch (IOException e) {
+            log.error("Error sending screen share started message", e);
+        }
+    }
+
+    public void sendScreenShareAnswer(UserSession viewer, String sdpAnswer) {
+        JsonObject message = new JsonObject();
+        message.addProperty("id", "screenShareAnswer");
+        message.addProperty("sdpAnswer", sdpAnswer);
+        try {
+            sendMessage(viewer.getSession(), viewer.getName(), message);
+        } catch (IOException e) {
+            log.error("Error sending screen share answer", e);
+        }
+    }
+    public void sendScreenIceCandidate(WebSocketSession session, IceCandidate candidate) throws IOException {
+        JsonObject message = new JsonObject();
+        message.addProperty("id", "screenIceCandidate");
+        message.add("candidate", JsonUtils.toJsonObject(candidate));
+        sendMessage(session, "screen", message);
+    }
+    public void sendScreenShareStopped(UserSession viewer) {
+        JsonObject message = new JsonObject();
+        message.addProperty("id", "screenShareStopped");
+        try {
+            sendMessage(viewer.getSession(), viewer.getName(), message);
+        } catch (IOException e) {
+            log.error("Error sending screen share stopped message", e);
+        }
+    }
 
 }

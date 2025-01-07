@@ -1,23 +1,8 @@
-/*
- * (C) Copyright 2014 Kurento (http://kurento.org/)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- */
-
 var ws = new WebSocket('ws://' + location.host + '/webrtc');
 var participants = {};
 var name;
+let screenShareRtcPeer; // 발표자의 화면 공유용
+let screenShareViewerRtcPeer; // 시청자의 화면 공유 시청용
 
 window.onbeforeunload = function() {
     ws.close();
@@ -48,6 +33,18 @@ ws.onmessage = function(message) {
                 }
             });
             break;
+        case 'screenShareStarted':
+            handleScreenShareStarted(parsedMessage);
+            break;
+        case 'screenShareStopped':
+            handleScreenShareStopped();
+            break;
+        case 'screenShareAnswer':
+            handleScreenShareAnswer(parsedMessage);
+            break;
+        case 'screenIceCandidate':
+            handleScreenIceCandidate(parsedMessage);
+            break;
         default:
             console.error('Unrecognized message', parsedMessage);
     }
@@ -74,20 +71,9 @@ function onNewParticipant(request) {
 }
 
 function receiveVideoResponse(result) {
-    participants[result.name].rtcPeer.processAnswer (result.sdpAnswer, function (error) {
-        if (error) return console.error (error);
+    participants[result.name].rtcPeer.processAnswer(result.sdpAnswer, function (error) {
+        if (error) return console.error(error);
     });
-}
-
-function callResponse(message) {
-    if (message.response != 'accepted') {
-        console.info('Call not accepted by peer. Closing call');
-        stop();
-    } else {
-        webRtcPeer.processAnswer(message.sdpAnswer, function (error) {
-            if (error) return console.error (error);
-        });
-    }
 }
 
 function onExistingParticipants(msg) {
@@ -116,25 +102,10 @@ function onExistingParticipants(msg) {
             if(error) {
                 return console.error(error);
             }
-            this.generateOffer (participant.offerToReceiveVideo.bind(participant));
+            this.generateOffer(participant.offerToReceiveVideo.bind(participant));
         });
 
     msg.data.forEach(receiveVideo);
-}
-
-function leaveRoom() {
-    sendMessage({
-        id : 'leaveRoom'
-    });
-
-    for ( var key in participants) {
-        participants[key].dispose();
-    }
-
-    document.getElementById('join').style.display = 'block';
-    document.getElementById('room').style.display = 'none';
-
-    ws.close();
 }
 
 function receiveVideo(sender) {
@@ -152,8 +123,165 @@ function receiveVideo(sender) {
             if(error) {
                 return console.error(error);
             }
-            this.generateOffer (participant.offerToReceiveVideo.bind(participant));
-        });;
+            this.generateOffer(participant.offerToReceiveVideo.bind(participant));
+        });
+}
+
+function startScreenShare() {
+    if (screenShareRtcPeer) {
+        return;
+    }
+
+    var container = document.createElement('div');
+    container.className = 'participant';
+    container.id = 'screen-share';
+
+    var video = document.createElement('video');
+    video.id = 'video-screen-share';
+    video.autoplay = true;
+    container.appendChild(video);
+
+    document.getElementById('screen-share-container').appendChild(container);
+
+    navigator.mediaDevices.getDisplayMedia()
+        .then(stream => {
+            var options = {
+                videoStream: stream,
+                localVideo: video,
+                onicecandidate: function(candidate) {
+                    var message = {
+                        id: 'screenIceCandidate',
+                        candidate: candidate,
+                        name: name
+                    };
+                    sendMessage(message);
+                }
+            }
+
+            screenShareRtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerSendonly(options, function(error) {
+                if (error) return console.error(error);
+                this.generateOffer((error, offerSdp) => {
+                    if (error) return console.error(error);
+                    var message = {
+                        id: 'startScreenShare',
+                        name: name,
+                        sdpOffer: offerSdp
+                    };
+                    sendMessage(message);
+                });
+            });
+
+            document.getElementById('button-share').style.display = 'none';
+            document.getElementById('button-stop-share').style.display = 'inline';
+
+            stream.getVideoTracks()[0].onended = () => {
+                stopScreenShare();
+            };
+        })
+        .catch(error => console.log('Could not get screen sharing'));
+}
+
+function stopScreenShare() {
+    if (screenShareRtcPeer) {
+        var message = {
+            id: 'stopScreenShare'
+        };
+        sendMessage(message);
+        screenShareRtcPeer.dispose();
+        screenShareRtcPeer = null;
+
+        var container = document.getElementById('screen-share');
+        if (container) {
+            container.remove();
+        }
+
+        document.getElementById('button-share').style.display = 'inline';
+        document.getElementById('button-stop-share').style.display = 'none';
+    }
+}
+
+function handleScreenShareStarted(message) {
+    receiveScreenShare(message.presenterName);
+}
+
+function handleScreenShareStopped() {
+    if (screenShareViewerRtcPeer) {
+        screenShareViewerRtcPeer.dispose();
+        screenShareViewerRtcPeer = null;
+    }
+    var screenVideo = document.querySelector('.screen-share');
+    if (screenVideo) {
+        screenVideo.remove();
+    }
+}
+
+function handleScreenShareAnswer(message) {
+    if (screenShareRtcPeer) {
+        screenShareRtcPeer.processAnswer(message.sdpAnswer);
+    } else if (screenShareViewerRtcPeer) {
+        screenShareViewerRtcPeer.processAnswer(message.sdpAnswer);
+    }
+}
+
+function handleScreenIceCandidate(message) {
+    if (screenShareRtcPeer) {
+        screenShareRtcPeer.addIceCandidate(message.candidate);
+    } else if (screenShareViewerRtcPeer) {
+        screenShareViewerRtcPeer.addIceCandidate(message.candidate);
+    }
+}
+
+function receiveScreenShare(presenterName) {
+    var container = document.createElement('div');
+    container.className = 'participant screen-share';
+
+    var video = document.createElement('video');
+    video.id = 'video-screen-share';
+    video.autoplay = true;
+    container.appendChild(video);
+
+    document.getElementById('participants').appendChild(container);
+
+    var options = {
+        remoteVideo: video,
+        onicecandidate: function(candidate) {
+            var message = {
+                id: 'screenIceCandidate',
+                candidate: candidate,
+                name: presenterName
+            };
+            sendMessage(message);
+        }
+    }
+
+    screenShareViewerRtcPeer = new kurentoUtils.WebRtcPeer.WebRtcPeerRecvonly(options,
+        function(error) {
+            if (error) return console.error(error);
+            this.generateOffer((error, offerSdp) => {
+                if (error) return console.error(error);
+                var message = {
+                    id: 'receiveScreenShare',
+                    name: presenterName,
+                    sdpOffer: offerSdp
+                };
+                sendMessage(message);
+            });
+        });
+}
+
+function leaveRoom() {
+    sendMessage({
+        id : 'leaveRoom'
+    });
+
+    for (var key in participants) {
+        participants[key].dispose();
+    }
+
+    document.getElementById('join').style.display = 'block';
+    document.getElementById('room').style.display = 'none';
+
+    ws.close();
 }
 
 function onParticipantLeft(request) {

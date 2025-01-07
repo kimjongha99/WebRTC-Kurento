@@ -49,8 +49,11 @@
         <div id="room" style="display: none;">
             <h2 id="room-header"></h2>
             <div id="participants"></div>
-            <input type="button" id="button-leave" onmouseup="leaveRoom();"
-                   value="Leave room">
+            <input type="button" id="button-leave" onmouseup="leaveRoom();" value="Leave room">
+
+            <div id="screen-share-container"></div>  <!-- 추가 -->
+            <input type="button" id="button-share" onclick="startScreenShare();" value="Share Screen">
+            <input type="button" id="button-stop-share" onclick="stopScreenShare();" value="Stop Share" style="display: none;">
         </div>
     </div>
 </div>

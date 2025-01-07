@@ -52,13 +52,27 @@ public class CallHandler extends TextWebSocketHandler {
                             candidate.get("sdpMid").getAsString(), candidate.get("sdpMLineIndex").getAsInt());
                     icecandidateUser.addCandidate(cand, jsonMessage.get("name").getAsString());
                 }
+                break;
+            case "startScreenShare":
+                handleStartScreenShare(jsonMessage, session);
+                break;
+            case "receiveScreenShare":  // 추가된 부분
+                handleReceiveScreenShare(jsonMessage, session);
+                break;
 
-
-
+            case "stopScreenShare":
+                handleStopScreenShare(session);
+                break;
+            case "screenIceCandidate":
+                handleScreenIceCandidate(jsonMessage, session);
+                break;
         }
-
-
     }
+
+
+
+
+
 
     private void joinRoom(JsonObject params, WebSocketSession session) throws IOException {
         String roomName = params.get("room").getAsString();
@@ -111,6 +125,65 @@ public class CallHandler extends TextWebSocketHandler {
         }
 
 
+    }
+    private void handleStartScreenShare(JsonObject jsonMessage, WebSocketSession session) {
+        try {
+            UserSession user = userRegister.getBySession(session);
+            if (user != null) {
+                String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
+                Room room = roomRegister.getRoomByName(user.getRoomName());
+
+                if (sdpOffer == null) {
+                    log.error("SDP offer is missing in startScreenShare message");
+                    return;
+                }
+
+                room.startScreenShare(user, sdpOffer);
+            } else {
+                log.warn("User not found for session: {}", session.getId());
+            }
+        } catch (Exception e) {
+            log.error("Error processing screen share start: ", e);
+        }
+    }
+
+    private void handleReceiveScreenShare(JsonObject jsonMessage, WebSocketSession session) {
+        try {
+            UserSession viewer = userRegister.getBySession(session);
+            if (viewer != null) {
+                String sdpOffer = jsonMessage.get("sdpOffer").getAsString();
+                Room room = roomRegister.getRoomByName(viewer.getRoomName());
+                room.receiveScreenShare(viewer, sdpOffer);
+            }
+        } catch (Exception e) {
+            log.error("Error processing receive screen share: ", e);
+        }
+    }
+
+    private void handleStopScreenShare(WebSocketSession session) {
+        UserSession user = userRegister.getBySession(session);
+        if (user != null) {
+            Room room = roomRegister.getRoomByName(user.getRoomName());
+            try {
+                room.stopScreenShare(user);
+            } catch (Exception e) {
+                //
+            }
+        }
+    }
+
+    private void handleScreenIceCandidate(JsonObject jsonMessage, WebSocketSession session) {
+        UserSession user = userRegister.getBySession(session);
+        if (user != null) {
+            JsonObject candidate = jsonMessage.get("candidate").getAsJsonObject();
+            IceCandidate cand = new IceCandidate(
+                    candidate.get("candidate").getAsString(),
+                    candidate.get("sdpMid").getAsString(),
+                    candidate.get("sdpMLineIndex").getAsInt());
+
+            Room room = roomRegister.getRoomByName(user.getRoomName());
+            room.addScreenCandidate(user, cand);
+        }
     }
 
 }

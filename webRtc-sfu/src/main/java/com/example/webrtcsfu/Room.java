@@ -5,7 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import lombok.Getter;
+import org.kurento.client.IceCandidate;
 import org.kurento.client.MediaPipeline;
+import org.kurento.client.WebRtcEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Getter
 public class Room {
     private static final Logger log = LoggerFactory.getLogger(Room.class);
+
+    private UserSession currentPresenter;
+    private WebRtcEndpoint screenShareEndpoint;
+    private final ConcurrentHashMap<String, WebRtcEndpoint> screenShareViewers = new ConcurrentHashMap<>();
+
 
     // 방 이름
     private final String roomName;
@@ -85,6 +92,107 @@ public class Room {
                 newParticipant,  // UserSession 객체 전달
                 participantsList
         );
+    }
+
+    public synchronized void startScreenShare(UserSession presenter, String sdpOffer) throws IOException {
+        if (currentPresenter != null) {
+            throw new IllegalStateException("다른 참가자가 이미 화면을 공유중입니다.");
+        }
+
+        screenShareEndpoint = new WebRtcEndpoint.Builder(pipeline).build();
+        currentPresenter = presenter;
+
+        // ICE candidate 처리를 위한 리스너 추가
+        screenShareEndpoint.addIceCandidateFoundListener(event -> {
+            try {
+                messageSender.sendScreenIceCandidate(presenter.getSession(), event.getCandidate());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // SDP answer 생성 및 전송
+        String sdpAnswer = screenShareEndpoint.processOffer(sdpOffer);
+        messageSender.sendScreenShareAnswer(presenter, sdpAnswer);
+        screenShareEndpoint.gatherCandidates();
+
+        // 다른 참가자들에게 알림
+        notifyScreenShareStarted(presenter);
+    }
+
+    private void notifyScreenShareStarted(UserSession presenter) {
+        participants.forEach((name, participant) -> {
+            if (!participant.equals(presenter)) {
+                messageSender.sendScreenShareStarted(participant, presenter.getName());
+            }
+        });
+    }
+
+
+    public synchronized void stopScreenShare(UserSession presenter) throws IOException {
+        if (currentPresenter != presenter) {
+            throw new IllegalStateException("화면 공유 중지 권한이 없습니다.");
+        }
+
+        // 화면 공유 엔드포인트 정리
+        if (screenShareEndpoint != null) {
+            screenShareEndpoint.release();
+            screenShareEndpoint = null;
+        }
+
+        // 시청자 엔드포인트 정리
+        screenShareViewers.forEach((name, endpoint) -> {
+            endpoint.release();
+        });
+        screenShareViewers.clear();
+
+        UserSession oldPresenter = currentPresenter;
+        currentPresenter = null;
+
+        // 다른 참가자들에게 화면 공유 중지 알림
+        notifyScreenShareStopped(oldPresenter);
+    }
+
+    private void notifyScreenShareStopped(UserSession presenter) {
+        participants.forEach((name, participant) -> {
+            if (!participant.equals(presenter)) {
+                messageSender.sendScreenShareStopped(participant);
+            }
+        });
+    }
+
+    public void addScreenCandidate(UserSession user, IceCandidate candidate) {
+        if (user == currentPresenter) {
+            screenShareEndpoint.addIceCandidate(candidate);
+        } else {
+            WebRtcEndpoint viewerEndpoint = screenShareViewers.get(user.getName());
+            if (viewerEndpoint != null) {
+                viewerEndpoint.addIceCandidate(candidate);
+            }
+        }
+    }
+
+    // 화면 공유 시청을 위한 메서드
+    public void receiveScreenShare(UserSession viewer, String sdpOffer) throws IOException {
+        if (currentPresenter == null || screenShareEndpoint == null) {
+            throw new IllegalStateException("현재 진행 중인 화면 공유가 없습니다.");
+        }
+
+        WebRtcEndpoint viewerEndpoint = new WebRtcEndpoint.Builder(pipeline).build();
+        screenShareViewers.put(viewer.getName(), viewerEndpoint);
+
+        viewerEndpoint.addIceCandidateFoundListener(event -> {
+            try {
+                messageSender.sendScreenIceCandidate(viewer.getSession(), event.getCandidate());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        screenShareEndpoint.connect(viewerEndpoint);
+        String sdpAnswer = viewerEndpoint.processOffer(sdpOffer);
+        messageSender.sendScreenShareAnswer(viewer, sdpAnswer);
+        viewerEndpoint.gatherCandidates();
     }
 
 

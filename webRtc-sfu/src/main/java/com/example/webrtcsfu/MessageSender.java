@@ -27,30 +27,30 @@ public class MessageSender {
     }
 
     /**
-     * 새 참가자 입장 메시지 ( 기존유저에게 전송)
+     * 새 참가자 입장 메시지 (기존 유저에게 전송)
      */
-    public void sendNewParticipantArrived(WebSocketSession session, String userName, String newUserId) {
+    public void sendNewParticipantArrived(UserSession participant, String newParticipantName) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "newParticipantArrived");
-        message.addProperty("name", newUserId);
+        message.addProperty("name", newParticipantName);
         try {
-            sendMessage(session, userName, message);
+            sendMessage(participant.getSession(), participant.getName(), message);
         } catch (IOException e) {
-            log.error("Error sending new participant message to user: " + userName, e);
+            log.error("Error sending new participant message to user: " + participant.getName(), e);
         }
     }
 
     /**
      * 기존 참가자 목록 메시지 ( 새로들어온 유저에게 전송)
      */
-    public void sendExistingParticipants(WebSocketSession session, String userName, JsonArray attendees) {
+    public void sendExistingParticipants(UserSession participant, JsonArray attendees) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "existingParticipants");
-        message.add("attendees", attendees);
+        message.add("data", attendees);
         try {
-            sendMessage(session, userName, message);
+            sendMessage(participant.getSession(), participant.getName(), message);
         } catch (IOException e) {
-            log.error("Error sending existing participants message to user: " + userName, e);
+            log.error("Error sending existing participants message to user: " + participant.getName(), e);
         }
     }
 
@@ -58,7 +58,7 @@ public class MessageSender {
     public void sendParticipantLeft(WebSocketSession session, String userName, String leftUserId) {
         JsonObject message = new JsonObject();
         message.addProperty("id", "participantLeft");
-        message.addProperty("leftUserId", leftUserId);
+        message.addProperty("name", leftUserId);
         try {
             sendMessage(session, userName, message);
         } catch (IOException e) {
@@ -75,6 +75,20 @@ public class MessageSender {
         response.add("candidate", JsonUtils.toJsonObject(candidate));
         sendMessage(session, userName, response);
     }
+    /**
+     * 비디오 응답 메시지 전송 메서드
+     */
+    public void sendVideoAnswer(UserSession participant, String senderName, String sdpAnswer) {
+        JsonObject message = new JsonObject();
+        message.addProperty("id", "receiveVideoAnswer");
+        message.addProperty("name", senderName);
+        message.addProperty("sdpAnswer", sdpAnswer);
 
+        try {
+            sendMessage(participant.getSession(), participant.getName(), message);
+        } catch (IOException e) {
+            log.error("Error sending video answer message to user: " + participant.getName(), e);
+        }
+    }
 
 }

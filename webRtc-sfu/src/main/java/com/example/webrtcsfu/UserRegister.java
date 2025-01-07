@@ -1,5 +1,7 @@
 package com.example.webrtcsfu;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,21 +11,27 @@ import java.util.concurrent.ConcurrentHashMap;
  * WebSocket 세션 ID로 유저를 찾을 수 있게 함
  */
 public class UserRegister {
+    private static final Logger log = LoggerFactory.getLogger(UserRegister.class);
+
     // WebSocket 세션 ID를 키로 하여 유저 세션을 저장하는 맵
     private final ConcurrentHashMap<String, UserSession> usersBySessionId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, UserSession> usersByName = new ConcurrentHashMap<>();
 
     /**
      * 세션 ID로 사용자 조회
      */
-    public UserSession getBySession(WebSocketSession sessionId) {
-        return usersBySessionId.get(sessionId);
+    public UserSession getBySession(WebSocketSession session) {
+        return usersBySessionId.get(session.getId());
     }
 
     /**
      * 새로운 사용자 등록
      */
     public void register(UserSession user) {
+        usersByName.put(user.getName(), user);
         usersBySessionId.put(user.getSession().getId(), user);
+
+
     }
 
 
@@ -37,9 +45,19 @@ public class UserRegister {
     /**
      * 사용자 세션 삭제
      *
-     * @param sessionId
+     * @param
      */
-    public void removeBySession(String sessionId) {
-        usersBySessionId.remove(sessionId);
+    public UserSession removeBySession(WebSocketSession session) {
+        UserSession user = getBySession(session);
+        usersByName.remove(user.getName());
+        usersBySessionId.remove(session.getId());
+        return user;
     }
+
+
+    public UserSession getByName(String senderName) {
+        return usersByName.get(senderName);
+    }
+
+
 }

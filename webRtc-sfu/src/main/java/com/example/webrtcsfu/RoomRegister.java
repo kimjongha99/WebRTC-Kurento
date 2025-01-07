@@ -29,7 +29,11 @@ public class RoomRegister {
         return rooms.containsKey(roomName);
     }
 
+    public Room getRoomToOrganize(String roomName) {
+        Room room = rooms.get(roomName);
+        return room;
 
+    }
 
     /**
      * createRoom 메서드
@@ -55,7 +59,7 @@ public class RoomRegister {
      * 룸 삭제.
      * @param roomName
      */
-    public void removeRoom(String roomName) {
+    public void removeRoom(Room roomName) {
         Room room = rooms.remove(roomName);
         if (room != null) {
             room.getPipeline().release();

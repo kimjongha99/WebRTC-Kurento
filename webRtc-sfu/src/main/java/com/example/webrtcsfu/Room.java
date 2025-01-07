@@ -1,13 +1,18 @@
 package com.example.webrtcsfu;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import lombok.Getter;
 import org.kurento.client.MediaPipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.socket.WebSocketSession;
 
+import java.io.IOException;
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,57 +38,55 @@ public class Room {
         this.pipeline = pipeline;
         this.messageSender = messageSender;
     }
-    // participants에 새로운 참가자를 추가하는 메서드
-    public void addParticipant(String userName, UserSession user) {
-        participants.put(userName, user);
+    public UserSession join(String userName, WebSocketSession session) throws IOException {
+        UserSession participant = new UserSession(userName, this.roomName, session, this.pipeline,messageSender);
+        notifyNewParticipantToRoom(participant);
+        participants.put(participant.getName(), participant); // room클래스에서 참가자 상태관리.추후 리소스 정리 필요.
+        sendExistingParticipantsToUser(participant);
+        return participant;
     }
 
 
     /**
      * 방의 기존 참가자들에게 새로운 참가자 입장을 알림
      */
-    public void notifyNewParticipantToRoom(String newUserName) {
-        log.debug("Room {}: notifying other participants about new user {}", roomName, newUserName);
+    public void notifyNewParticipantToRoom(UserSession newParticipant) {
+        log.debug("룸 {}: 다른 참가자에게 새 사용자 {}에 대해 알립니다.", roomName, newParticipant.getName());
 
         // 기존 참가자들에게 새 참가자 알림 전송
         participants.forEach((participantName, participant) -> {
             // 새로 들어온 참가자 제외
-            if (!participantName.equals(newUserName)) {
+            if (!participantName.equals(newParticipant.getName())) {
                 messageSender.sendNewParticipantArrived(
-                        participant.getSession(),
-                        participant.getName(),
-                        newUserName
+                        participant,  // UserSession 객체 전달
+                        newParticipant.getName()
                 );
             }
         });
     }
 
-
-    // 클라이언트로 보내는 소켓메세지 전송( 비동기적적으로 처리되어야함) , 새로입장한 유저에게 전송으로 처리되어야함) , 새로입장한 유저에게 전송
     /**
      * 새로 입장한 참가자에게 기존 참가자 목록 전송
      */
-    public void sendExistingParticipantsToUser(String userName) {
-        log.debug("Room {}: sending existing participants list to {}", roomName, userName);
+    public void sendExistingParticipantsToUser(UserSession newParticipant) {
+        log.debug("Room {}: sending existing participants list to {}", roomName, newParticipant.getName());
 
-        UserSession newUser = participants.get(userName);
-        if (newUser != null) {
-            // 기존 참가자 목록 생성 (자신 제외)
-            JsonArray participantsList = new JsonArray();
-            participants.forEach((participantName, participant) -> {
-                if (!participantName.equals(userName)) {
-                    participantsList.add(participantName);
-                }
-            });
+        // 기존 참가자 목록 생성 (자신 제외)
+        JsonArray participantsList = new JsonArray();
+        participants.forEach((participantName, participant) -> {
+            if (!participantName.equals(newParticipant.getName())) {
+                participantsList.add(participantName);
+            }
+        });
 
-            // 새 참가자에게 전송
-            messageSender.sendExistingParticipants(
-                    newUser.getSession(),
-                    userName,
-                    participantsList
-            );
-        }
+        // 새 참가자에게 전송
+        messageSender.sendExistingParticipants(
+                newParticipant,  // UserSession 객체 전달
+                participantsList
+        );
     }
+
+
 
     public void removeParticipant(String userName) {
         log.debug("Room {}: removing participant {}", roomName, userName);
@@ -99,4 +102,21 @@ public class Room {
         });
     }
 
+    public void leave(UserSession user) throws IOException {
+        try {
+            // 1. 다른 참가자들에게 알림
+            removeParticipant(user.getName());
+
+            // 2. 사용자의 WebRTC 리소스 정리
+            user.close();
+
+            // 3. participants 맵에서 제거
+            participants.remove(user.getName());
+
+            log.info("사용자 {} 방 {} 퇴장 처리 완료", user.getName(), this.roomName);
+        } catch (Exception e) {
+            log.error("사용자 퇴장 처리 중 오류 발생: {}", user.getName(), e);
+            throw e;
+        }
+    }
 }

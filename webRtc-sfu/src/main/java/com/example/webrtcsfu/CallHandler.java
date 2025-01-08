@@ -107,6 +107,13 @@ public class CallHandler extends TextWebSocketHandler {
             // 2. Room에서 사용자 제거 및 다른 참가자들에게 알림
             Room room = roomRegister.getRoomByName(disconnectedUser.getRoomName());
             if (room != null) {
+
+                // 스크린 공유 중이었다면 정리
+                try {
+                    room.stopScreenShare(disconnectedUser);
+                } catch (Exception e) {
+                    log.warn("스크린 공유 정리 중 오류 발생: {}", e.getMessage());
+                }
                 // Room의 leave 메서드 호출 - 다른 참가자들에게 알림 전송 및 room에서 참가자 제거
                 room.leave(disconnectedUser);
 

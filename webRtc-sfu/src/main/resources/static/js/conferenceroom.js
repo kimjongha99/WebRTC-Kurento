@@ -3,10 +3,40 @@ var participants = {};
 var userId;
 let screenShareRtcPeer; // 발표자의 화면 공유용
 let screenShareViewerRtcPeer; // 시청자의 화면 공유 시청용
+var heartbeatInterval;
 
 window.onbeforeunload = function() {
     ws.close();
 };
+// WebSocket 연결이 열리면 하트비트 시작
+ws.onopen = function() {
+    console.log('WebSocket 연결됨');
+    startHeartbeat();
+};
+// 연결 종료 시 하트비트 정지
+ws.onclose = function() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+};
+
+// 페이지 나갈 때 정리
+window.onbeforeunload = function() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+    ws.close();
+};
+// 하트비트 시작 함수
+function startHeartbeat() {
+    heartbeatInterval = setInterval(function() {
+        if (ws.readyState === WebSocket.OPEN) {
+            sendMessage({
+                id: 'heartbeat'
+            });
+        }
+    }, 30000); // 30초마다 하트비트 전송
+}
 
 ws.onmessage = function(message) {
     var parsedMessage = JSON.parse(message.data);
@@ -58,6 +88,9 @@ ws.onmessage = function(message) {
             break;
         case 'screenIceCandidate':
             handleScreenIceCandidate(parsedMessage);
+            break;
+        case 'heartbeatResponse':
+            console.log('하트비트 응답 받음');
             break;
         default:
             console.error('Unrecognized message', parsedMessage);

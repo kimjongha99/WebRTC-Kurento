@@ -29,11 +29,7 @@ public class CallHandler extends TextWebSocketHandler {
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String rawMessage = message.getPayload();
-        log.info("Raw WebSocket message received: {}", rawMessage);
-
         JsonObject jsonMessage = gson.fromJson(rawMessage, JsonObject.class);
-        log.info("Parsed JSON message: {}", jsonMessage);
-        log.info("Available fields in message: {}", jsonMessage.keySet());
 
         switch (jsonMessage.get("id").getAsString()) {
 
